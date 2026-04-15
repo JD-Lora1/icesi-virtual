@@ -51,6 +51,21 @@ function cloneObjective(objective) {
   }
 }
 
+function toPercent(part, total) {
+  if (!total) return 0
+  return Math.round((part / total) * 100)
+}
+
+function normalizeLevel(level) {
+  const normalized = String(level || '').toUpperCase()
+  return LEVELS.includes(normalized) ? normalized : 'I'
+}
+
+function formatMetric(value, digits = 2) {
+  if (!Number.isFinite(value)) return '0.00'
+  return value.toFixed(digits)
+}
+
 function App() {
   const [theme, setTheme] = useState('light')
   const [activeView, setActiveView] = useState('inicio')
@@ -59,10 +74,6 @@ function App() {
   const [competencies, setCompetencies] = useState([])
   const [objectives, setObjectives] = useState([])
   const [courses, setCourses] = useState([])
-  const [stats, setStats] = useState(null)
-  const [analytics, setAnalytics] = useState(null)
-  const [report, setReport] = useState(null)
-
   const [filters, setFilters] = useState(emptyFilters)
 
   const [programForm, setProgramForm] = useState({ id: null, name: '' })
@@ -278,22 +289,190 @@ function App() {
     return objectives.filter((objective) => competencyIds.has(objective.competency_id))
   }, [competencies, courseForm.program_id, objectives, selectedCrudProgramId])
 
-  const quickKpis = useMemo(() => {
-    const objectivesWithoutCourses = stats?.objectives_without_courses?.count || 0
-    const coursesWithoutObjectives = displayedCourses.filter((course) => getCourseObjectives(course).length === 0).length
+  const objectiveUsageMap = useMemo(() => {
+    const usage = new Map()
+
+    displayedCourses.forEach((course) => {
+      getCourseObjectives(course).forEach((objective) => {
+        const key = Number(objective.id)
+        usage.set(key, (usage.get(key) || 0) + 1)
+      })
+    })
+
+    return usage
+  }, [displayedCourses])
+
+  const displayedCompetencies = useMemo(() => {
+    if (filters.competency_id) {
+      return competencies.filter((competency) => Number(competency.id) === Number(filters.competency_id))
+    }
+
+    if (displayedObjectives.length === 0) {
+      return availableCompetenciesForFilters
+    }
+
+    const competencyIds = new Set(displayedObjectives.map((objective) => Number(objective.competency_id)))
+    return availableCompetenciesForFilters.filter((competency) => competencyIds.has(Number(competency.id)))
+  }, [availableCompetenciesForFilters, competencies, displayedObjectives, filters.competency_id])
+
+  const objectivesWithoutCoursesCount = useMemo(
+    () => displayedObjectives.filter((objective) => !objectiveUsageMap.has(Number(objective.id))).length,
+    [displayedObjectives, objectiveUsageMap],
+  )
+
+  const competenciesWithoutObjectivesCount = useMemo(() => {
+    const objectiveCompetencyIds = new Set(displayedObjectives.map((objective) => Number(objective.competency_id)))
+    return displayedCompetencies.filter((competency) => !objectiveCompetencyIds.has(Number(competency.id))).length
+  }, [displayedCompetencies, displayedObjectives])
+
+  const coursesWithoutObjectivesCount = useMemo(
+    () => displayedCourses.filter((course) => getCourseObjectives(course).length === 0).length,
+    [displayedCourses],
+  )
+
+  const coverageSummary = useMemo(() => {
+    const totalObjectives = displayedObjectives.length
+    const totalCompetencies = displayedCompetencies.length
+    const coveredObjectives = totalObjectives - objectivesWithoutCoursesCount
+    const coveredCompetencies = totalCompetencies - competenciesWithoutObjectivesCount
 
     return {
-      objectivesWithoutCourses,
-      coursesWithoutObjectives,
-      healthScore: Math.max(0, 100 - objectivesWithoutCourses * 8),
+      totalObjectives,
+      totalCompetencies,
+      coveredObjectives,
+      coveredCompetencies,
+      objectiveCoverage: toPercent(coveredObjectives, totalObjectives),
+      objectiveWithoutCoursePct: toPercent(objectivesWithoutCoursesCount, totalObjectives),
+      competencyWithoutObjectivePct: toPercent(competenciesWithoutObjectivesCount, totalCompetencies),
+      globalCoverage: toPercent(
+        coveredObjectives + coveredCompetencies,
+        totalObjectives + totalCompetencies,
+      ),
     }
-  }, [displayedCourses, stats])
+  }, [
+    competenciesWithoutObjectivesCount,
+    displayedCompetencies.length,
+    displayedObjectives.length,
+    objectivesWithoutCoursesCount,
+  ])
 
-  const coberturaGeneral = report?.executive_summary?.coverage_percentage ?? 0
-  const coberturaObjetivos = stats?.objectives_without_courses?.percentage ?? 0
-  const coberturaCompetencias = stats?.competencies_without_objectives?.percentage ?? 0
-  const objetivosSinCursoCount = stats?.objectives_without_courses?.count ?? 0
-  const objetivosTotalesCount = stats?.objectives_without_courses?.total ?? 0
+  const competencyLevelSeries = useMemo(() => {
+    const byCompetency = new Map()
+
+    displayedCompetencies.forEach((competency) => {
+      byCompetency.set(Number(competency.id), {
+        id: competency.id,
+        name: competency.name,
+        I: 0,
+        F: 0,
+        V: 0,
+        total: 0,
+      })
+    })
+
+    displayedCourses.forEach((course) => {
+      getCourseObjectives(course).forEach((objective) => {
+        const competencyId = Number(objective.competency_id)
+        if (!byCompetency.has(competencyId)) return
+
+        const entry = byCompetency.get(competencyId)
+        const level = normalizeLevel(objective.pivot?.contribution_level)
+        entry[level] += 1
+        entry.total += 1
+      })
+    })
+
+    return Array.from(byCompetency.values())
+      .filter((entry) => entry.total > 0)
+      .sort((a, b) => b.total - a.total)
+  }, [displayedCompetencies, displayedCourses])
+
+  const heatmapObjectives = useMemo(() => {
+    if (displayedObjectives.length <= 12) return displayedObjectives
+
+    return [...displayedObjectives]
+      .sort((a, b) => {
+        const usageA = objectiveUsageMap.get(Number(a.id)) || 0
+        const usageB = objectiveUsageMap.get(Number(b.id)) || 0
+        return usageB - usageA
+      })
+      .slice(0, 12)
+  }, [displayedObjectives, objectiveUsageMap])
+
+  const radarData = useMemo(() => {
+    const base = competencyLevelSeries.length > 0 ? competencyLevelSeries : displayedCompetencies.map((competency) => ({
+      id: competency.id,
+      name: competency.name,
+      I: 0,
+      F: 0,
+      V: 0,
+      total: 0,
+    }))
+
+    const selected = base.slice(0, 5)
+    const scored = selected.map((entry) => {
+      const weighted = entry.I + entry.F * 2 + entry.V * 3
+      const score = entry.total > 0 ? (weighted / (entry.total * 3)) * 10 : 0
+      return {
+        ...entry,
+        score,
+      }
+    })
+
+    const scores = scored.map((item) => item.score)
+    const avg = scores.length ? scores.reduce((acc, value) => acc + value, 0) / scores.length : 0
+    const deviation =
+      scores.length > 1
+        ? Math.sqrt(scores.reduce((acc, value) => acc + (value - avg) ** 2, 0) / scores.length) / 10
+        : 0
+
+    return {
+      points: scored,
+      cohesion: avg,
+      deviation,
+    }
+  }, [competencyLevelSeries, displayedCompetencies])
+
+  const radarPolygon = useMemo(() => {
+    if (radarData.points.length === 0) return ''
+
+    const center = 110
+    const radius = 80
+
+    return radarData.points
+      .map((point, index) => {
+        const angle = (-Math.PI / 2) + ((Math.PI * 2) / radarData.points.length) * index
+        const distance = (point.score / 10) * radius
+        const x = center + Math.cos(angle) * distance
+        const y = center + Math.sin(angle) * distance
+        return `${x},${y}`
+      })
+      .join(' ')
+  }, [radarData.points])
+
+  const radarAxes = useMemo(() => {
+    if (radarData.points.length === 0) return []
+
+    const center = 110
+    const radius = 80
+
+    return radarData.points.map((point, index) => {
+      const angle = (-Math.PI / 2) + ((Math.PI * 2) / radarData.points.length) * index
+      const x = center + Math.cos(angle) * radius
+      const y = center + Math.sin(angle) * radius
+      const labelX = center + Math.cos(angle) * (radius + 26)
+      const labelY = center + Math.sin(angle) * (radius + 26)
+
+      return {
+        id: point.id,
+        x,
+        y,
+        labelX,
+        labelY,
+        label: point.name,
+      }
+    })
+  }, [radarData.points])
 
   const loadCatalog = async () => {
     const [programData, competencyData, objectiveData] = await Promise.all([
@@ -312,23 +491,11 @@ function App() {
     setCourses(courseData)
   }
 
-  const loadAnalysis = async () => {
-    const [statsData, analyticsData, reportData] = await Promise.all([
-      apiRequest('/stats'),
-      apiRequest('/stats/analytics'),
-      apiRequest('/stats/report'),
-    ])
-
-    setStats(statsData)
-    setAnalytics(analyticsData)
-    setReport(reportData)
-  }
-
   const reloadAll = async () => {
     setError('')
     setLoading(true)
     try {
-      await Promise.all([loadCatalog(), loadCourses(), loadAnalysis()])
+      await Promise.all([loadCatalog(), loadCourses()])
     } catch (loadError) {
       setError(loadError.message)
     } finally {
@@ -1033,23 +1200,23 @@ function App() {
                     <h3>Panel de métricas y calidad</h3>
                     <div className="ss-donut-grid">
                       <div className="ss-donut-card">
-                        <div className="ss-donut" style={{ '--valor': `${coberturaGeneral}%` }}>
-                          <span>{coberturaGeneral}%</span>
+                        <div className="ss-donut" style={{ '--valor': `${coverageSummary.globalCoverage}%` }}>
+                          <span>{coverageSummary.globalCoverage}%</span>
                         </div>
-                        <p>Cobertura curricular total</p>
+                        <p>Cobertura global filtrada</p>
                       </div>
                       <div className="ss-donut-card">
-                        <div className="ss-donut ss-donut-warning" style={{ '--valor': `${Math.min(100, coberturaObjetivos)}%` }}>
-                          <span>{coberturaObjetivos}%</span>
+                        <div className="ss-donut ss-donut-warning" style={{ '--valor': `${Math.min(100, coverageSummary.objectiveWithoutCoursePct)}%` }}>
+                          <span>{coverageSummary.objectiveWithoutCoursePct}%</span>
                         </div>
                         <p>Objetivos sin cursos</p>
                         <small className="ss-donut-meta">
-                          {objetivosSinCursoCount} / {objetivosTotalesCount}
+                          {objectivesWithoutCoursesCount} / {coverageSummary.totalObjectives}
                         </small>
                       </div>
                       <div className="ss-donut-card">
-                        <div className="ss-donut ss-donut-danger" style={{ '--valor': `${Math.min(100, coberturaCompetencias)}%` }}>
-                          <span>{coberturaCompetencias}%</span>
+                        <div className="ss-donut ss-donut-danger" style={{ '--valor': `${Math.min(100, coverageSummary.competencyWithoutObjectivePct)}%` }}>
+                          <span>{coverageSummary.competencyWithoutObjectivePct}%</span>
                         </div>
                         <p>Competencias sin objetivos</p>
                       </div>
@@ -1065,19 +1232,139 @@ function App() {
                   </article>
                   <article className="ss-kpi-card">
                     <label>Total de competencias</label>
-                    <strong>{filters.program_id ? availableCompetenciesForFilters.length : competencies.length}</strong>
+                    <strong>{displayedCompetencies.length}</strong>
                     <small>{filters.program_id ? 'Competencias del programa' : 'Todas las competencias'}</small>
                   </article>
                   <article className="ss-kpi-card">
                     <label>Huérfanos</label>
-                    <strong>{quickKpis.coursesWithoutObjectives}</strong>
+                    <strong>{coursesWithoutObjectivesCount}</strong>
                     <small>Cursos sin objetivos</small>
                   </article>
-                  <article className="ss-kpi-card">
-                    <label>Salud académica</label>
-                    <strong>{analytics?.coverage_health?.overall_score ?? quickKpis.healthScore}</strong>
-                    <small>Índice compuesto</small>
-                  </article>
+                </section>
+
+                <section className="ss-card">
+                  <h3>Niveles por competencia</h3>
+                  <p className="ss-section-help">Distribución de niveles I, F y V por competencia según los cursos filtrados.</p>
+                  <div className="ss-level-chart">
+                    {competencyLevelSeries.length === 0 && (
+                      <p className="ss-empty-row">No hay asignaciones de niveles para los filtros actuales.</p>
+                    )}
+
+                    {competencyLevelSeries.map((entry) => (
+                      <div key={`comp-level-${entry.id}`} className="ss-level-row">
+                        <div className="ss-level-title" title={entry.name}>{entry.name}</div>
+                        <div className="ss-level-stack">
+                          <div className="ss-level-segment i" style={{ width: `${(entry.I / entry.total) * 100}%` }}>
+                            I {entry.I}
+                          </div>
+                          <div className="ss-level-segment f" style={{ width: `${(entry.F / entry.total) * 100}%` }}>
+                            F {entry.F}
+                          </div>
+                          <div className="ss-level-segment v" style={{ width: `${(entry.V / entry.total) * 100}%` }}>
+                            V {entry.V}
+                          </div>
+                        </div>
+                        <div className="ss-level-total">{entry.total}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="ss-card">
+                  <h3>Mapa de cursos por objetivo y nivel</h3>
+                  <p className="ss-section-help">Filas: cursos. Columnas: objetivos. Cada celda muestra el nivel asociado (I/F/V).</p>
+                  <div className="ss-heatmap-wrap">
+                    <table className="ss-heatmap">
+                      <thead>
+                        <tr>
+                          <th>Curso</th>
+                          {heatmapObjectives.map((objective) => (
+                            <th key={`heat-head-${objective.id}`} title={objective.description}>
+                              OBJ-{objective.id}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayedCourses.map((course) => {
+                          const levelsByObjective = new Map(
+                            getCourseObjectives(course).map((objective) => [
+                              Number(objective.id),
+                              normalizeLevel(objective.pivot?.contribution_level),
+                            ]),
+                          )
+
+                          return (
+                            <tr key={`heat-row-${course.id}`}>
+                              <td className="ss-heat-course" title={course.name}>{course.name}</td>
+                              {heatmapObjectives.map((objective) => {
+                                const level = levelsByObjective.get(Number(objective.id))
+                                return (
+                                  <td key={`heat-cell-${course.id}-${objective.id}`} className="ss-heat-cell">
+                                    {level ? (
+                                      <span className={`ss-heat-chip lvl-${level}`}>{level}</span>
+                                    ) : (
+                                      <span className="ss-heat-dot" aria-hidden="true" />
+                                    )}
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          )
+                        })}
+
+                        {displayedCourses.length === 0 && (
+                          <tr>
+                            <td colSpan={Math.max(2, heatmapObjectives.length + 1)} className="ss-empty-row">
+                              No hay cursos para visualizar en el heatmap.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className="ss-card ss-competency-balance">
+                  <div>
+                    <h3>Balance de competencias</h3>
+                    <p className="ss-section-help">Radar de distribución por competencia basado en la mezcla de niveles I, F y V.</p>
+
+                    <div className="ss-radar-wrap">
+                      <svg viewBox="0 0 220 220" role="img" aria-label="Radar de competencias">
+                        <circle cx="110" cy="110" r="80" className="ss-radar-grid" />
+                        <circle cx="110" cy="110" r="53" className="ss-radar-grid" />
+                        <circle cx="110" cy="110" r="26" className="ss-radar-grid" />
+
+                        {radarAxes.map((axis) => (
+                          <g key={`axis-${axis.id}`}>
+                            <line x1="110" y1="110" x2={axis.x} y2={axis.y} className="ss-radar-axis" />
+                            <text x={axis.labelX} y={axis.labelY} className="ss-radar-label" textAnchor="middle">
+                              {axis.label.length > 14 ? `${axis.label.slice(0, 14)}...` : axis.label}
+                            </text>
+                          </g>
+                        ))}
+
+                        {radarPolygon && <polygon points={radarPolygon} className="ss-radar-shape" />}
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="ss-radar-metrics">
+                    <article>
+                      <label>Cohesión</label>
+                      <strong>{formatMetric(radarData.cohesion, 1)}</strong>
+                    </article>
+                    <article>
+                      <label>Desviación</label>
+                      <strong>{formatMetric(radarData.deviation, 2)}</strong>
+                    </article>
+                    <article>
+                      <label>Objetivos cubiertos</label>
+                      <strong>{coverageSummary.coveredObjectives}</strong>
+                      <small>de {coverageSummary.totalObjectives}</small>
+                    </article>
+                  </div>
                 </section>
 
                 <section className="ss-card">
@@ -1187,8 +1474,8 @@ function App() {
                   <div className="ss-kpi-row">
                     <article className="ss-kpi-card">
                       <label>Objetivos sin cursos</label>
-                      <strong>{coberturaObjetivos}%</strong>
-                      <small>{objetivosSinCursoCount} / {objetivosTotalesCount}</small>
+                      <strong>{coverageSummary.objectiveWithoutCoursePct}%</strong>
+                      <small>{objectivesWithoutCoursesCount} / {coverageSummary.totalObjectives}</small>
                     </article>
                   </div>
 
