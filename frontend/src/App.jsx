@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 const LEVELS = ['I', 'F', 'V']
 const LEVEL_NAMES = {
-  I: 'Inicial',
-  F: 'Formativo',
-  V: 'Avanzado',
+  I: 'Introduce',
+  F: 'Fortalece',
+  V: 'Valora',
 }
 
 async function apiRequest(path, options = {}) {
@@ -1525,7 +1525,7 @@ function App() {
                     <select value={filters.contribution_level} onChange={(event) => updateFilter('contribution_level', event.target.value)}>
                       <option value="">Todos</option>
                       {LEVELS.map((level) => (
-                        <option key={level} value={level}>{level}</option>
+                        <option key={level} value={level}>{getLevelName(level)} ({level})</option>
                       ))}
                     </select>
                   </label>
