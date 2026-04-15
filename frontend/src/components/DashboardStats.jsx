@@ -13,7 +13,7 @@ function buildChart(unassignedPercentage) {
     datasets: [
       {
         data: [safePercentage, coveredPercentage],
-        backgroundColor: ['#f97316', '#14b8a6'],
+        backgroundColor: ['#007aff', '#d1d5db'],
         borderWidth: 0,
         hoverOffset: 6,
       },
@@ -28,16 +28,18 @@ const chartOptions = {
     legend: {
       position: 'bottom',
       labels: {
-        color: '#cbd5e1',
+        color: '#475569',
         usePointStyle: true,
         pointStyle: 'circle',
         padding: 18,
       },
     },
     tooltip: {
-      backgroundColor: '#0f172a',
-      titleColor: '#e2e8f0',
-      bodyColor: '#e2e8f0',
+      backgroundColor: '#ffffff',
+      titleColor: '#0f172a',
+      bodyColor: '#0f172a',
+      borderColor: '#e2e8f0',
+      borderWidth: 1,
       displayColors: false,
     },
   },
@@ -46,12 +48,12 @@ const chartOptions = {
 
 function StatCard({ title, count, total, percentage, description, chartColor, chartData }) {
   return (
-    <article className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+    <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">{title}</p>
-          <h3 className="mt-2 text-3xl font-semibold text-white">{percentage}%</h3>
-          <p className="mt-1 text-sm text-slate-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">{title}</p>
+          <h3 className="mt-2 text-3xl font-semibold text-slate-900">{percentage}%</h3>
+          <p className="mt-1 text-sm text-slate-600">
             {count} de {total} {description}
           </p>
         </div>
@@ -77,17 +79,17 @@ export default function DashboardStats({ stats, loading, error }) {
   if (loading) {
     return (
       <section className="grid gap-6 lg:grid-cols-2">
-        <div className="h-80 rounded-3xl border border-white/10 bg-white/5" />
-        <div className="h-80 rounded-3xl border border-white/10 bg-white/5" />
+        <div className="h-80 rounded-[2rem] border border-slate-200 bg-white" />
+        <div className="h-80 rounded-[2rem] border border-slate-200 bg-white" />
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="rounded-3xl border border-red-500/30 bg-red-500/10 p-6 text-red-100">
+      <section className="rounded-[2rem] border border-rose-200 bg-rose-50 p-6 text-rose-700">
         <p className="font-semibold">No fue posible cargar las estadísticas.</p>
-        <p className="mt-1 text-sm text-red-100/80">{error}</p>
+        <p className="mt-1 text-sm text-rose-600">{error}</p>
       </section>
     );
   }
@@ -100,7 +102,7 @@ export default function DashboardStats({ stats, loading, error }) {
         total={stats?.objectives_without_courses?.total ?? 0}
         percentage={stats?.objectives_without_courses?.percentage ?? 0}
         description="objetivos no tienen cursos asociados"
-        chartColor="bg-orange-500/20 text-orange-200 ring-1 ring-orange-400/20"
+        chartColor="bg-blue-50 text-blue-700 ring-1 ring-blue-100"
         chartData={objectiveChartData}
       />
       <StatCard
@@ -109,7 +111,7 @@ export default function DashboardStats({ stats, loading, error }) {
         total={stats?.competencies_without_objectives?.total ?? 0}
         percentage={stats?.competencies_without_objectives?.percentage ?? 0}
         description="competencias no tienen objetivos asociados"
-        chartColor="bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-400/20"
+        chartColor="bg-slate-100 text-slate-700 ring-1 ring-slate-200"
         chartData={competencyChartData}
       />
     </section>

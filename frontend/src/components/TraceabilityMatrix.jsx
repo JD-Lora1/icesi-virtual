@@ -1,13 +1,13 @@
 function levelBadgeClasses(level) {
   switch (level) {
     case 'I':
-      return 'bg-sky-500/15 text-sky-200 ring-1 ring-sky-400/25';
+      return 'bg-blue-50 text-blue-700 ring-1 ring-blue-100';
     case 'F':
-      return 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/25';
+      return 'bg-amber-50 text-amber-700 ring-1 ring-amber-100';
     case 'V':
-      return 'bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/25';
+      return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100';
     default:
-      return 'bg-slate-500/15 text-slate-200 ring-1 ring-slate-400/25';
+      return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
   }
 }
 
@@ -21,12 +21,12 @@ function MatrixBadge({ level }) {
 
 function SelectField({ label, value, onChange, children }) {
   return (
-    <label className="flex flex-1 min-w-48 flex-col gap-2 text-sm text-slate-300">
-      <span className="font-medium text-slate-200">{label}</span>
+    <label className="flex flex-1 min-w-48 flex-col gap-2 text-sm text-slate-600">
+      <span className="font-medium text-slate-900">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 rounded-2xl border border-white/10 bg-slate-900/80 px-4 text-slate-100 outline-none transition focus:border-cyan-400/40 focus:ring-2 focus:ring-cyan-400/10"
+        className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
       >
         {children}
       </select>
@@ -72,12 +72,12 @@ export default function TraceabilityMatrix({
   });
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-      <div className="flex flex-col gap-6 border-b border-white/10 pb-6">
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
+      <div className="flex flex-col gap-6 border-b border-slate-200 pb-6">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-400">Traceability Matrix</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">Matriz de trazabilidad curricular</h2>
-          <p className="mt-1 text-sm text-slate-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Traceability Matrix</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Matriz de trazabilidad curricular</h2>
+          <p className="mt-1 text-sm text-slate-600">
             Filtra por programa, competencia y nivel sin recargar la página.
           </p>
         </div>
@@ -114,7 +114,7 @@ export default function TraceabilityMatrix({
             <button
               type="button"
               onClick={resetFilters}
-              className="h-11 rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-slate-100 transition hover:border-cyan-400/30 hover:bg-white/10"
+              className="h-11 rounded-2xl border border-slate-200 bg-slate-50 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Limpiar filtros
             </button>
@@ -122,14 +122,14 @@ export default function TraceabilityMatrix({
         </div>
       </div>
 
-      {loading && <p className="px-1 py-6 text-slate-300">Cargando matriz académica...</p>}
-      {error && <p className="px-1 py-6 text-red-200">{error}</p>}
+      {loading && <p className="px-1 py-6 text-slate-600">Cargando matriz académica...</p>}
+      {error && <p className="px-1 py-6 text-rose-600">{error}</p>}
 
       {!loading && !error && (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
+        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
           <div className="max-h-[32rem] overflow-auto">
             <table className="min-w-full border-collapse text-left text-sm">
-              <thead className="sticky top-0 bg-slate-950/95 text-slate-200 backdrop-blur">
+              <thead className="sticky top-0 bg-white/95 text-slate-700 backdrop-blur">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Curso</th>
                   <th className="px-4 py-3 font-semibold">Programa</th>
@@ -138,20 +138,20 @@ export default function TraceabilityMatrix({
                   <th className="px-4 py-3 font-semibold">Nivel</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10 bg-slate-950/40">
+              <tbody className="divide-y divide-slate-200 bg-white">
                 {matrixRows.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-6 text-slate-300" colSpan={5}>
+                    <td className="px-4 py-6 text-slate-600" colSpan={5}>
                       No hay resultados para los filtros seleccionados.
                     </td>
                   </tr>
                 ) : (
                   matrixRows.map((row) => (
-                    <tr key={row.id} className="align-top transition hover:bg-white/5">
-                      <td className="px-4 py-4 font-medium text-white">{row.courseName}</td>
-                      <td className="px-4 py-4 text-slate-300">{row.programName}</td>
-                      <td className="px-4 py-4 text-slate-300">{row.competencyName}</td>
-                      <td className="px-4 py-4 text-slate-200">{row.objectiveName}</td>
+                    <tr key={row.id} className="align-top transition hover:bg-slate-50">
+                      <td className="px-4 py-4 font-medium text-slate-900">{row.courseName}</td>
+                      <td className="px-4 py-4 text-slate-600">{row.programName}</td>
+                      <td className="px-4 py-4 text-slate-600">{row.competencyName}</td>
+                      <td className="px-4 py-4 text-slate-700">{row.objectiveName}</td>
                       <td className="px-4 py-4">
                         <MatrixBadge level={row.level} />
                       </td>

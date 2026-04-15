@@ -32,8 +32,8 @@ function TabButton({ active, children, onClick }) {
       onClick={onClick}
       className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
         active
-          ? 'bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-400/20'
-          : 'border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
+          ? 'bg-slate-900 text-white shadow-sm'
+          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
       }`}
     >
       {children}
@@ -43,10 +43,10 @@ function TabButton({ active, children, onClick }) {
 
 function Field({ label, error, children }) {
   return (
-    <label className="flex flex-col gap-2 text-sm text-slate-300">
-      <span className="font-medium text-slate-100">{label}</span>
+    <label className="flex flex-col gap-2 text-sm text-slate-600">
+      <span className="font-medium text-slate-900">{label}</span>
       {children}
-      {error ? <span className="text-xs text-rose-300">{error}</span> : null}
+      {error ? <span className="text-xs text-rose-600">{error}</span> : null}
     </label>
   );
 }
@@ -55,7 +55,7 @@ function Input(props) {
   return (
     <input
       {...props}
-      className={`h-11 rounded-2xl border border-white/10 bg-slate-950/70 px-4 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/10 ${
+      className={`h-11 rounded-2xl border border-slate-200 bg-white px-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 ${
         props.className ?? ''
       }`}
     />
@@ -66,7 +66,7 @@ function Select(props) {
   return (
     <select
       {...props}
-      className={`h-11 rounded-2xl border border-white/10 bg-slate-950/70 px-4 text-slate-100 outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/10 ${
+      className={`h-11 rounded-2xl border border-slate-200 bg-white px-4 text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 ${
         props.className ?? ''
       }`}
     />
@@ -77,7 +77,7 @@ function Textarea(props) {
   return (
     <textarea
       {...props}
-      className={`min-h-28 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/10 ${
+      className={`min-h-28 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 ${
         props.className ?? ''
       }`}
     />
@@ -88,8 +88,8 @@ function ActionButton({ children, variant = 'primary', ...props }) {
   const base = 'inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition';
   const classes =
     variant === 'ghost'
-      ? `${base} border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10`
-      : `${base} bg-cyan-400 text-slate-950 hover:bg-cyan-300`;
+      ? `${base} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`
+      : `${base} bg-slate-900 text-white hover:bg-slate-800`;
 
   return (
     <button {...props} className={`${classes} ${props.className ?? ''}`}>
@@ -100,7 +100,7 @@ function ActionButton({ children, variant = 'primary', ...props }) {
 
 function EmptyState({ children }) {
   return (
-    <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 px-4 py-5 text-sm text-slate-300">
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
       {children}
     </div>
   );
@@ -382,12 +382,12 @@ export default function AcademicManagement({
   const objectiveCompetencyOptions = competencies;
 
   return (
-    <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl sm:p-8">
-      <div className="flex flex-col gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,0.06)] sm:p-8">
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-200/80">Gestión</p>
-          <h2 className="mt-2 text-3xl font-semibold text-white">CRUD curricular</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">Gestión</p>
+          <h2 className="mt-2 text-3xl font-semibold text-slate-900">CRUD curricular</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Cambia entre Cursos, Competencias y Objetivos con pestañas. Los formularios validan campos vacíos y muestran
             errores de API cuando algo falla.
           </p>
@@ -403,35 +403,35 @@ export default function AcademicManagement({
       </div>
 
       {mutationError ? (
-        <div className="mt-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+        <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {mutationError}
         </div>
       ) : null}
 
       {mutationSuccess ? (
-        <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {mutationSuccess}
         </div>
       ) : null}
 
       {loading ? (
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div className="h-64 rounded-3xl border border-white/10 bg-white/5" />
-          <div className="h-64 rounded-3xl border border-white/10 bg-white/5" />
+          <div className="h-64 rounded-3xl border border-slate-200 bg-slate-50" />
+          <div className="h-64 rounded-3xl border border-slate-200 bg-slate-50" />
         </div>
       ) : error ? (
-        <div className="mt-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
+        <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
           {error}
         </div>
       ) : (
         <div className="mt-6 space-y-8">
           {activeTab === 'courses' && (
             <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-              <form className="rounded-3xl border border-white/10 bg-slate-950/40 p-6" onSubmit={submitCourse}>
+              <form className="rounded-3xl border border-slate-200 bg-slate-50 p-6" onSubmit={submitCourse}>
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-xl font-semibold text-white">{editingCourseId ? 'Editar curso' : 'Nuevo curso'}</h3>
-                    <p className="text-sm text-slate-400">Nombre y programa son obligatorios.</p>
+                    <h3 className="text-xl font-semibold text-slate-900">{editingCourseId ? 'Editar curso' : 'Nuevo curso'}</h3>
+                    <p className="text-sm text-slate-500">Nombre y programa son obligatorios.</p>
                   </div>
                   {editingCourseId ? (
                     <ActionButton
@@ -482,20 +482,20 @@ export default function AcademicManagement({
                 </div>
               </form>
 
-              <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-6">
-                <h3 className="text-xl font-semibold text-white">Cursos registrados</h3>
-                <p className="mt-1 text-sm text-slate-400">Lista con edición y eliminación.</p>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6">
+                <h3 className="text-xl font-semibold text-slate-900">Cursos registrados</h3>
+                <p className="mt-1 text-sm text-slate-500">Lista con edición y eliminación.</p>
 
                 <div className="mt-5 space-y-3">
                   {courses.length === 0 ? (
                     <EmptyState>No hay cursos todavía.</EmptyState>
                   ) : (
                     courses.map((course) => (
-                      <article key={course.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <article key={course.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <h4 className="font-semibold text-white">{course.name}</h4>
-                            <p className="mt-1 text-sm text-slate-300">
+                            <h4 className="font-semibold text-slate-900">{course.name}</h4>
+                            <p className="mt-1 text-sm text-slate-600">
                               Programa: {course?.program?.name ?? 'Sin programa'}
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
@@ -521,13 +521,13 @@ export default function AcademicManagement({
 
           {activeTab === 'competencies' && (
             <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-              <form className="rounded-3xl border border-white/10 bg-slate-950/40 p-6" onSubmit={submitCompetency}>
+              <form className="rounded-3xl border border-slate-200 bg-slate-50 p-6" onSubmit={submitCompetency}>
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-xl font-semibold text-white">
+                    <h3 className="text-xl font-semibold text-slate-900">
                       {editingCompetencyId ? 'Editar competencia' : 'Nueva competencia'}
                     </h3>
-                    <p className="text-sm text-slate-400">Nombre y programa son obligatorios.</p>
+                    <p className="text-sm text-slate-500">Nombre y programa son obligatorios.</p>
                   </div>
                   {editingCompetencyId ? (
                     <ActionButton
@@ -578,20 +578,20 @@ export default function AcademicManagement({
                 </div>
               </form>
 
-              <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-6">
-                <h3 className="text-xl font-semibold text-white">Competencias registradas</h3>
-                <p className="mt-1 text-sm text-slate-400">Cada competencia pertenece a un programa.</p>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6">
+                <h3 className="text-xl font-semibold text-slate-900">Competencias registradas</h3>
+                <p className="mt-1 text-sm text-slate-500">Cada competencia pertenece a un programa.</p>
 
                 <div className="mt-5 space-y-3">
                   {competencies.length === 0 ? (
                     <EmptyState>No hay competencias todavía.</EmptyState>
                   ) : (
                     competencies.map((competency) => (
-                      <article key={competency.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <article key={competency.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <h4 className="font-semibold text-white">{competency.name}</h4>
-                            <p className="mt-1 text-sm text-slate-300">
+                            <h4 className="font-semibold text-slate-900">{competency.name}</h4>
+                            <p className="mt-1 text-sm text-slate-600">
                               Programa: {competency?.program?.name ?? 'Sin programa'}
                             </p>
                           </div>
@@ -614,13 +614,13 @@ export default function AcademicManagement({
 
           {activeTab === 'objectives' && (
             <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-              <form className="rounded-3xl border border-white/10 bg-slate-950/40 p-6" onSubmit={submitObjective}>
+              <form className="rounded-3xl border border-slate-200 bg-slate-50 p-6" onSubmit={submitObjective}>
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-xl font-semibold text-white">
+                    <h3 className="text-xl font-semibold text-slate-900">
                       {editingObjectiveId ? 'Editar objetivo' : 'Nuevo objetivo'}
                     </h3>
-                    <p className="text-sm text-slate-400">La competencia es obligatoria para un objetivo nuevo.</p>
+                    <p className="text-sm text-slate-500">La competencia es obligatoria para un objetivo nuevo.</p>
                   </div>
                   {editingObjectiveId ? (
                     <ActionButton
@@ -674,20 +674,20 @@ export default function AcademicManagement({
                 </div>
               </form>
 
-              <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-6">
-                <h3 className="text-xl font-semibold text-white">Objetivos registrados</h3>
-                <p className="mt-1 text-sm text-slate-400">Cada objetivo pertenece a una competencia.</p>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6">
+                <h3 className="text-xl font-semibold text-slate-900">Objetivos registrados</h3>
+                <p className="mt-1 text-sm text-slate-500">Cada objetivo pertenece a una competencia.</p>
 
                 <div className="mt-5 space-y-3">
                   {objectives.length === 0 ? (
                     <EmptyState>No hay objetivos todavía.</EmptyState>
                   ) : (
                     objectives.map((objective) => (
-                      <article key={objective.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <article key={objective.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <h4 className="font-semibold text-white">{objective.description}</h4>
-                            <p className="mt-1 text-sm text-slate-300">
+                            <h4 className="font-semibold text-slate-900">{objective.description}</h4>
+                            <p className="mt-1 text-sm text-slate-600">
                               Competencia: {objective?.competency?.name ?? 'Sin competencia'}
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
@@ -711,8 +711,8 @@ export default function AcademicManagement({
             </div>
           )}
 
-          <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
-            Tab activa: <span className="font-semibold text-white">{activeTabLabel}</span>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Tab activa: <span className="font-semibold text-slate-900">{activeTabLabel}</span>
           </div>
         </div>
       )}
