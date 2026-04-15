@@ -79,6 +79,32 @@ function formatMetric(value, digits = 2) {
   return value.toFixed(digits)
 }
 
+function getEditorPosition(position, estimatedWidth = 380, estimatedHeight = 320) {
+  if (!position) {
+    return { left: 32, top: 32 }
+  }
+
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 720
+  const margin = 16
+  const preferredLeft = position.left + 16
+  const preferredTop = position.top + 16
+  const maxLeft = Math.max(margin, viewportWidth - estimatedWidth - margin)
+  const maxTop = Math.max(margin, viewportHeight - estimatedHeight - margin)
+
+  const left = Math.min(Math.max(preferredLeft, margin), maxLeft)
+  let top = preferredTop
+
+  if (preferredTop + estimatedHeight > viewportHeight - margin) {
+    top = position.top - estimatedHeight - 16
+  }
+
+  return {
+    left,
+    top: Math.min(Math.max(top, margin), maxTop),
+  }
+}
+
 function App() {
   const [theme, setTheme] = useState('light')
   const [activeView, setActiveView] = useState('inicio')
@@ -113,6 +139,81 @@ function App() {
 
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const pushHistory = (action, clearRedo = true) => {
+    setHistoryUndo((current) => [...current, action].slice(-3))
+
+    if (clearRedo) {
+      setHistoryRedo([])
+    }
+
+    setUndoToast(action)
+
+    if (undoToastTimerRef.current) {
+      clearTimeout(undoToastTimerRef.current)
+    }
+
+    undoToastTimerRef.current = setTimeout(() => {
+      setUndoToast(null)
+      undoToastTimerRef.current = null
+    }, 5000)
+  }
+
+  const executeUndo = async () => {
+    if (historyUndo.length === 0 || saving) return
+
+    const action = historyUndo[historyUndo.length - 1]
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const redoAction = await action.undo()
+
+      setHistoryUndo((current) => current.slice(0, -1))
+      setHistoryRedo((current) => [...current, redoAction || action].slice(-3))
+      setUndoToast(null)
+
+      if (undoToastTimerRef.current) {
+        clearTimeout(undoToastTimerRef.current)
+        undoToastTimerRef.current = null
+      }
+    } catch (undoError) {
+      setError(undoError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const executeRedo = async () => {
+    if (historyRedo.length === 0 || saving) return
+
+    const action = historyRedo[historyRedo.length - 1]
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const undoAction = await action.redo()
+
+      setHistoryRedo((current) => current.slice(0, -1))
+      setHistoryUndo((current) => [...current, undoAction || action].slice(-3))
+      setUndoToast(action)
+
+      if (undoToastTimerRef.current) {
+        clearTimeout(undoToastTimerRef.current)
+      }
+
+      undoToastTimerRef.current = setTimeout(() => {
+        setUndoToast(null)
+        undoToastTimerRef.current = null
+      }, 5000)
+    } catch (redoError) {
+      setError(redoError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const displayedCourses = useMemo(() => {
     let nextCourses = courses
@@ -345,7 +446,7 @@ function App() {
 
     setMatrixEditor({
       courseId: course.id,
-      position,
+      position: getEditorPosition(position, 380, 320),
       originalObjectiveId: assignment ? String(assignment.objective_id) : null,
       competency_id: objective ? String(objective.competency_id) : '',
       objective_id: assignment ? String(assignment.objective_id) : '',
@@ -439,13 +540,26 @@ function App() {
   const openObjectiveEditor = (objective, position = null) => {
     setObjectiveEditor({
       objectiveId: objective.id,
-      position,
+      position: getEditorPosition(position, 420, 340),
       description: objective.description,
       competency_id: String(objective.competency_id ?? objective.competency?.id ?? ''),
     })
   }
 
   const closeObjectiveEditor = () => setObjectiveEditor(null)
+
+  const removeObjectiveEditor = async () => {
+    if (!objectiveEditorTarget) return
+
+    if (!window.confirm(`Quitar el objetivo OBJ-${objectiveEditorTarget.id}? Esta acción se puede deshacer.`)) return
+
+    try {
+      await deleteObjectiveWithHistory(cloneObjective(objectiveEditorTarget))
+      setObjectiveEditor(null)
+    } catch (deleteError) {
+      setError(deleteError.message)
+    }
+  }
 
   const saveObjectiveEditor = async () => {
     if (!objectiveEditor) return
@@ -725,6 +839,29 @@ function App() {
   const resetCourseForm = () => {
     setCourseForm({ id: null, name: '', program_id: selectedCrudProgramId || '' })
     setAssignmentDraft([])
+    setAssignmentInput({ objective_id: '', contribution_level: 'I' })
+  }
+
+  const loadCourseIntoForm = (courseId) => {
+    if (!courseId) {
+      resetCourseForm()
+      return
+    }
+
+    const selectedCourse = courses.find((course) => Number(course.id) === Number(courseId))
+    if (!selectedCourse) return
+
+    setCourseForm({
+      id: selectedCourse.id,
+      name: selectedCourse.name,
+      program_id: String(selectedCourse.program_id ?? ''),
+    })
+    setAssignmentDraft(
+      getCourseObjectives(selectedCourse).map((objective) => ({
+        objective_id: String(objective.id),
+        contribution_level: normalizeLevel(objective.pivot?.contribution_level),
+      })),
+    )
     setAssignmentInput({ objective_id: '', contribution_level: 'I' })
   }
 
@@ -1796,8 +1933,8 @@ function App() {
                     </div>
                   </div>
                   <div className="ss-theme-switch" role="group" aria-label="Selector de tema">
-                    <button className={theme === 'light' ? 'ss-theme-btn active' : 'ss-theme-btn'} onClick={() => setTheme('light')} type="button">Claro</button>
-                    <button className={theme === 'black' ? 'ss-theme-btn active' : 'ss-theme-btn'} onClick={() => setTheme('black')} type="button">Negro</button>
+                    <button className={theme === 'light' ? 'ss-theme-btn active' : 'ss-theme-btn'} onClick={() => setTheme('light')} type="button">Light</button>
+                    <button className={theme === 'black' ? 'ss-theme-btn active' : 'ss-theme-btn'} onClick={() => setTheme('black')} type="button">Black</button>
                   </div>
                 </article>
 
@@ -1922,6 +2059,15 @@ function App() {
                   <h3>Cursos y niveles I/F/V</h3>
                   <form onSubmit={saveCourse} className="ss-form">
                     <div className="ss-grid-two">
+                      <label className="ss-span-two">
+                        Curso existente
+                        <select value={courseForm.id || ''} onChange={(event) => loadCourseIntoForm(event.target.value)}>
+                          <option value="">Crear nuevo curso</option>
+                          {crudCourses.map((course) => (
+                            <option key={course.id} value={course.id}>{course.name}</option>
+                          ))}
+                        </select>
+                      </label>
                       <input value={courseForm.name} onChange={(event) => setCourseForm({ ...courseForm, name: event.target.value })} placeholder="Nombre del curso" required />
                       <select value={courseForm.program_id || selectedCrudProgramId || ''} onChange={(event) => setCourseForm({ ...courseForm, program_id: event.target.value })} required>
                         <option value="">Programa</option>
@@ -2064,6 +2210,9 @@ function App() {
                 {objectiveEditorTarget.competency?.program?.name || 'Sin programa'}
               </p>
               <div className="ss-actions ss-editor-actions">
+                <button className="ss-btn ss-btn-danger" type="button" onClick={removeObjectiveEditor} disabled={saving}>
+                  Quitar
+                </button>
                 <button className="ss-btn ss-btn-ghost" type="button" onClick={closeObjectiveEditor} disabled={saving}>
                   Cancelar
                 </button>
