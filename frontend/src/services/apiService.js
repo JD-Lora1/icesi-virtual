@@ -66,3 +66,11 @@ export async function updateObjective(objectiveId, payload) {
 export async function deleteObjective(objectiveId) {
   await apiClient.delete(`/learning-objectives/${objectiveId}`);
 }
+
+export async function syncCourseObjectives(courseId, objectiveAssignments) {
+  const { data } = await apiClient.post(`/courses/${courseId}/objectives`, {
+    objective_assignments: objectiveAssignments,
+  });
+
+  return data;
+}

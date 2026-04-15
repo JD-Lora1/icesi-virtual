@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', HealthController::class);
 
 Route::apiResource('courses', CourseController::class);
+Route::post('courses/{course}/objectives', [CourseController::class, 'syncObjectives']);
 
 Route::get('competencies', [AcademicController::class, 'competenciesIndex']);
 Route::post('competencies', [AcademicController::class, 'storeCompetency']);

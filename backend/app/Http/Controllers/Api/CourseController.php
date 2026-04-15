@@ -53,4 +53,28 @@ class CourseController extends Controller
 
         return response()->json(null, 204);
     }
+
+    public function syncObjectives(Request $request, Course $course): JsonResponse
+    {
+        $validated = $request->validate([
+            'objective_assignments' => ['required', 'array', 'min:1'],
+            'objective_assignments.*.objective_id' => ['required', 'integer', 'exists:learning_objectives,id'],
+            'objective_assignments.*.contribution_level' => ['required', 'in:I,F,V'],
+        ]);
+
+        $syncPayload = collect($validated['objective_assignments'])
+            ->mapWithKeys(function (array $assignment) {
+                return [
+                    $assignment['objective_id'] => ['contribution_level' => $assignment['contribution_level']],
+                ];
+            })
+            ->all();
+
+        $course->learningObjectives()->sync($syncPayload);
+
+        return response()->json(
+            $course->fresh()->load(['program', 'learningObjectives.competency']),
+            200
+        );
+    }
 }

@@ -10,6 +10,8 @@ Monorepo para un sistema de gestion curricular con:
 - `start-local.bat`: arranque local sencillo en Windows
 - `start-local.sh`: arranque local sencillo en Bash/Git Bash
 
+El archivo `.env.example` de la raiz es opcional y solo sirve como referencia de variables compartidas del monorepo, principalmente para Docker Compose y puertos locales. Los valores de cada aplicacion viven en `backend/.env.example` y `frontend/.env.example`.
+
 ## Estructura
 
 ```text
