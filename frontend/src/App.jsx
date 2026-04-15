@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 const LEVELS = ['I', 'F', 'V']
+const LEVEL_NAMES = {
+  I: 'Inicial',
+  F: 'Formativo',
+  V: 'Avanzado',
+}
 
 async function apiRequest(path, options = {}) {
   const config = {
@@ -61,6 +66,14 @@ function normalizeLevel(level) {
   return LEVELS.includes(normalized) ? normalized : 'I'
 }
 
+function getLevelName(level) {
+  return LEVEL_NAMES[normalizeLevel(level)]
+}
+
+function formatLevelLabel(level, count, total) {
+  return `${getLevelName(level)} - ${count} (${toPercent(count, total)}%)`
+}
+
 function formatMetric(value, digits = 2) {
   if (!Number.isFinite(value)) return '0.00'
   return value.toFixed(digits)
@@ -88,9 +101,10 @@ function App() {
   const [isAddingObjective, setIsAddingObjective] = useState(false)
   const [newObjectiveDraft, setNewObjectiveDraft] = useState({ description: '', competency_id: '' })
   const [objectiveDrafts, setObjectiveDrafts] = useState({})
-  const [selectedObjectiveId, setSelectedObjectiveId] = useState(null)
 
   const [selectedCrudProgramId, setSelectedCrudProgramId] = useState('')
+  const [matrixEditor, setMatrixEditor] = useState(null)
+  const [objectiveEditor, setObjectiveEditor] = useState(null)
 
   const [historyUndo, setHistoryUndo] = useState([])
   const [historyRedo, setHistoryRedo] = useState([])
@@ -99,94 +113,6 @@ function App() {
 
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-
-  const pushHistory = (action, showToast = false) => {
-    setHistoryUndo((current) => [...current.slice(-2), action])
-    setHistoryRedo([])
-
-    if (showToast) {
-      setUndoToast({ label: action.label })
-
-      if (undoToastTimerRef.current) {
-        clearTimeout(undoToastTimerRef.current)
-      }
-
-      undoToastTimerRef.current = setTimeout(() => {
-        setUndoToast(null)
-        undoToastTimerRef.current = null
-      }, 10000)
-    }
-  }
-
-  const executeUndo = async () => {
-    if (historyUndo.length === 0 || saving) return
-    const action = historyUndo[historyUndo.length - 1]
-
-    setSaving(true)
-    setError('')
-
-    try {
-      const nextAction = await action.undo()
-      setHistoryUndo((current) => current.slice(0, -1))
-      setHistoryRedo((current) => [...current.slice(-2), nextAction || action])
-      setUndoToast(null)
-      await reloadAll()
-    } catch (undoError) {
-      setError(undoError.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const executeRedo = async () => {
-    if (historyRedo.length === 0 || saving) return
-    const action = historyRedo[historyRedo.length - 1]
-
-    setSaving(true)
-    setError('')
-
-    try {
-      const nextAction = await action.redo()
-      setHistoryRedo((current) => current.slice(0, -1))
-      setHistoryUndo((current) => [...current.slice(-2), nextAction || action])
-      await reloadAll()
-    } catch (redoError) {
-      setError(redoError.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const availableCompetenciesForFilters = useMemo(() => {
-    if (!filters.program_id) return competencies
-    return competencies.filter((competency) => Number(competency.program_id) === Number(filters.program_id))
-  }, [competencies, filters.program_id])
-
-  const availableCoursesForFilters = useMemo(() => {
-    if (!filters.program_id) return courses
-    return courses.filter((course) => Number(course.program_id) === Number(filters.program_id))
-  }, [courses, filters.program_id])
-
-  const availableObjectivesForFilters = useMemo(() => {
-    let nextObjectives = objectives
-
-    if (filters.program_id) {
-      const competencyIds = new Set(
-        competencies
-          .filter((competency) => Number(competency.program_id) === Number(filters.program_id))
-          .map((competency) => competency.id),
-      )
-      nextObjectives = nextObjectives.filter((objective) => competencyIds.has(objective.competency_id))
-    }
-
-    if (filters.competency_id) {
-      nextObjectives = nextObjectives.filter(
-        (objective) => Number(objective.competency_id) === Number(filters.competency_id),
-      )
-    }
-
-    return nextObjectives
-  }, [competencies, filters.competency_id, filters.program_id, objectives])
 
   const displayedCourses = useMemo(() => {
     let nextCourses = courses
@@ -225,6 +151,117 @@ function App() {
 
     return nextCourses
   }, [courses, filters])
+
+  const availableCoursesForFilters = useMemo(() => {
+    let nextCourses = courses
+
+    if (filters.program_id) {
+      nextCourses = nextCourses.filter((course) => Number(course.program_id) === Number(filters.program_id))
+    }
+
+    if (filters.competency_id) {
+      nextCourses = nextCourses.filter((course) =>
+        getCourseObjectives(course).some((objective) => Number(objective.competency_id) === Number(filters.competency_id)),
+      )
+    }
+
+    if (filters.objective_id) {
+      nextCourses = nextCourses.filter((course) =>
+        getCourseObjectives(course).some((objective) => Number(objective.id) === Number(filters.objective_id)),
+      )
+    }
+
+    if (filters.contribution_level) {
+      nextCourses = nextCourses.filter((course) =>
+        getCourseObjectives(course).some(
+          (objective) =>
+            String(objective.pivot?.contribution_level || '').toUpperCase() ===
+            String(filters.contribution_level).toUpperCase(),
+        ),
+      )
+    }
+
+    return nextCourses
+  }, [courses, filters])
+
+  const availableCompetenciesForFilters = useMemo(() => {
+    let nextCompetencies = competencies
+
+    if (filters.program_id) {
+      nextCompetencies = nextCompetencies.filter((competency) => Number(competency.program_id) === Number(filters.program_id))
+    }
+
+    if (filters.course_id) {
+      const competencyIdsInCourse = new Set(
+        getCourseObjectives(displayedCourses.find((course) => Number(course.id) === Number(filters.course_id)) || { learning_objectives: [] })
+          .map((objective) => Number(objective.competency_id)),
+      )
+      nextCompetencies = nextCompetencies.filter((competency) => competencyIdsInCourse.has(Number(competency.id)))
+    }
+
+    if (filters.objective_id) {
+      const objective = objectives.find((item) => Number(item.id) === Number(filters.objective_id))
+      if (objective) {
+        nextCompetencies = nextCompetencies.filter((competency) => Number(competency.id) === Number(objective.competency_id))
+      }
+    }
+
+    if (filters.contribution_level) {
+      const competencyIdsWithLevel = new Set(
+        displayedCourses.flatMap((course) =>
+          getCourseObjectives(course)
+            .filter(
+              (objective) =>
+                String(objective.pivot?.contribution_level || '').toUpperCase() ===
+                String(filters.contribution_level).toUpperCase(),
+            )
+            .map((objective) => Number(objective.competency_id)),
+        ),
+      )
+      nextCompetencies = nextCompetencies.filter((competency) => competencyIdsWithLevel.has(Number(competency.id)))
+    }
+
+    return nextCompetencies
+  }, [competencies, displayedCourses, filters, objectives])
+
+  const availableObjectivesForFilters = useMemo(() => {
+    let nextObjectives = objectives
+
+    if (filters.program_id) {
+      const competencyIds = new Set(
+        competencies
+          .filter((competency) => Number(competency.program_id) === Number(filters.program_id))
+          .map((competency) => Number(competency.id)),
+      )
+      nextObjectives = nextObjectives.filter((objective) => competencyIds.has(Number(objective.competency_id)))
+    }
+
+    if (filters.competency_id) {
+      nextObjectives = nextObjectives.filter((objective) => Number(objective.competency_id) === Number(filters.competency_id))
+    }
+
+    if (filters.course_id) {
+      const objectiveIdsInCourse = new Set(
+        displayedCourses.flatMap((course) => getCourseObjectives(course).map((objective) => Number(objective.id))),
+      )
+      nextObjectives = nextObjectives.filter((objective) => objectiveIdsInCourse.has(Number(objective.id)))
+    }
+
+    if (filters.contribution_level) {
+      nextObjectives = nextObjectives.filter((objective) =>
+        displayedCourses.some((course) =>
+          getCourseObjectives(course).some(
+            (courseObjective) =>
+              Number(courseObjective.id) === Number(objective.id) &&
+              String(courseObjective.pivot?.contribution_level || '').toUpperCase() ===
+                String(filters.contribution_level).toUpperCase(),
+          ),
+        ),
+      )
+    }
+
+    return nextObjectives
+  }, [competencies, displayedCourses, filters, objectives])
 
   const displayedObjectives = useMemo(() => {
     let nextObjectives = objectives
@@ -287,6 +324,149 @@ function App() {
 
     return objectives.filter((objective) => competencyIds.has(objective.competency_id))
   }, [competencies, courseForm.program_id, objectives, selectedCrudProgramId])
+
+  const getCourseObjectiveOptions = (course) => {
+    const programId = course.program_id || selectedCrudProgramId
+    if (!programId) return objectives
+
+    const competencyIds = new Set(
+      competencies
+        .filter((competency) => Number(competency.program_id) === Number(programId))
+        .map((competency) => competency.id),
+    )
+
+    return objectives.filter((objective) => competencyIds.has(objective.competency_id))
+  }
+
+  const openMatrixEditor = (course, assignment = null, position = null) => {
+    const objective = assignment
+      ? objectives.find((item) => Number(item.id) === Number(assignment.objective_id))
+      : null
+
+    setMatrixEditor({
+      courseId: course.id,
+      position,
+      originalObjectiveId: assignment ? String(assignment.objective_id) : null,
+      competency_id: objective ? String(objective.competency_id) : '',
+      objective_id: assignment ? String(assignment.objective_id) : '',
+      contribution_level: assignment ? normalizeLevel(assignment.contribution_level) : 'I',
+    })
+  }
+
+  const closeMatrixEditor = () => setMatrixEditor(null)
+
+  const saveMatrixEditor = async () => {
+    if (!matrixEditor) return
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const course = courses.find((item) => Number(item.id) === Number(matrixEditor.courseId))
+      if (!course) throw new Error('No se encontró el curso seleccionado.')
+
+      const currentAssignments = getCourseObjectives(course).map((objective) => ({
+        objective_id: String(objective.id),
+        contribution_level: normalizeLevel(objective.pivot?.contribution_level),
+      }))
+
+      const nextAssignments = currentAssignments.filter(
+        (assignment) => String(assignment.objective_id) !== String(matrixEditor.originalObjectiveId),
+      )
+
+      if (matrixEditor.objective_id) {
+        nextAssignments.push({
+          objective_id: String(matrixEditor.objective_id),
+          contribution_level: normalizeLevel(matrixEditor.contribution_level),
+        })
+      }
+
+      await apiRequest(`/courses/${course.id}/objectives`, {
+        method: 'POST',
+        body: JSON.stringify({
+          objective_assignments: nextAssignments.map((assignment) => ({
+            objective_id: Number(assignment.objective_id),
+            contribution_level: assignment.contribution_level,
+          })),
+        }),
+      })
+
+      setMatrixEditor(null)
+      await reloadAll()
+    } catch (saveError) {
+      setError(saveError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeMatrixEditorAssignment = async () => {
+    if (!matrixEditor) return
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const course = courses.find((item) => Number(item.id) === Number(matrixEditor.courseId))
+      if (!course) throw new Error('No se encontró el curso seleccionado.')
+
+      const nextAssignments = getCourseObjectives(course)
+        .map((objective) => ({
+          objective_id: String(objective.id),
+          contribution_level: normalizeLevel(objective.pivot?.contribution_level),
+        }))
+        .filter((assignment) => String(assignment.objective_id) !== String(matrixEditor.originalObjectiveId))
+
+      await apiRequest(`/courses/${course.id}/objectives`, {
+        method: 'POST',
+        body: JSON.stringify({
+          objective_assignments: nextAssignments.map((assignment) => ({
+            objective_id: Number(assignment.objective_id),
+            contribution_level: assignment.contribution_level,
+          })),
+        }),
+      })
+
+      setMatrixEditor(null)
+      await reloadAll()
+    } catch (removeError) {
+      setError(removeError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const openObjectiveEditor = (objective, position = null) => {
+    setObjectiveEditor({
+      objectiveId: objective.id,
+      position,
+      description: objective.description,
+      competency_id: String(objective.competency_id ?? objective.competency?.id ?? ''),
+    })
+  }
+
+  const closeObjectiveEditor = () => setObjectiveEditor(null)
+
+  const saveObjectiveEditor = async () => {
+    if (!objectiveEditor) return
+
+    setSaving(true)
+    setError('')
+
+    try {
+      await updateObjectiveRequest(objectiveEditor.objectiveId, {
+        description: objectiveEditor.description,
+        competency_id: Number(objectiveEditor.competency_id),
+      })
+
+      setObjectiveEditor(null)
+      await reloadAll()
+    } catch (saveError) {
+      setError(saveError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const objectiveUsageMap = useMemo(() => {
     const usage = new Map()
@@ -509,13 +689,6 @@ function App() {
       setSelectedCrudProgramId(String(programs[0].id))
     }
   }, [programs, selectedCrudProgramId])
-
-  useEffect(() => {
-    if (!selectedObjectiveId) return
-    if (!displayedObjectives.some((objective) => objective.id === selectedObjectiveId)) {
-      setSelectedObjectiveId(null)
-    }
-  }, [displayedObjectives, selectedObjectiveId])
 
   useEffect(() => {
     document.body.classList.toggle('body-theme-light', theme === 'light')
@@ -1092,6 +1265,33 @@ function App() {
     }
   }
 
+  const matrixEditorCourse = matrixEditor
+    ? courses.find((course) => Number(course.id) === Number(matrixEditor.courseId))
+    : null
+
+  const matrixEditorCompetencies = matrixEditorCourse
+    ? competencies.filter((competency) => Number(competency.program_id) === Number(matrixEditorCourse.program_id))
+    : []
+
+  const matrixEditorObjectives = matrixEditorCourse
+    ? objectives.filter((objective) => {
+        const competencyMatches = !matrixEditor.competency_id || Number(objective.competency_id) === Number(matrixEditor.competency_id)
+        const programMatches = Number(
+          competencies.find((competency) => Number(competency.id) === Number(objective.competency_id))?.program_id,
+        ) === Number(matrixEditorCourse.program_id)
+
+        return competencyMatches && programMatches
+      })
+    : []
+
+  const objectiveEditorTarget = objectiveEditor
+    ? objectives.find((objective) => Number(objective.id) === Number(objectiveEditor.objectiveId))
+    : null
+
+  const objectiveEditorCompetencies = objectiveEditorTarget?.competency?.program_id
+    ? competencies.filter((competency) => Number(competency.program_id) === Number(objectiveEditorTarget.competency?.program_id))
+    : competencies
+
   return (
     <div className={`ss-app theme-${theme}`}>
       <section className="ss-shell">
@@ -1248,17 +1448,17 @@ function App() {
                       <div key={`comp-level-${entry.id}`} className="ss-level-row">
                         <div className="ss-level-title" title={entry.name}>{entry.name}</div>
                         <div className="ss-level-stack">
-                          <div className="ss-level-segment i" style={{ width: `${(entry.I / entry.total) * 100}%` }}>
-                            I {entry.I}
+                          <div className="ss-level-segment i" style={{ width: `${(entry.I / entry.total) * 100}%` }} title={formatLevelLabel('I', entry.I, entry.total)}>
+                            {getLevelName('I')} - {entry.I} ({toPercent(entry.I, entry.total)}%)
                           </div>
-                          <div className="ss-level-segment f" style={{ width: `${(entry.F / entry.total) * 100}%` }}>
-                            F {entry.F}
+                          <div className="ss-level-segment f" style={{ width: `${(entry.F / entry.total) * 100}%` }} title={formatLevelLabel('F', entry.F, entry.total)}>
+                            {getLevelName('F')} - {entry.F} ({toPercent(entry.F, entry.total)}%)
                           </div>
-                          <div className="ss-level-segment v" style={{ width: `${(entry.V / entry.total) * 100}%` }}>
-                            V {entry.V}
+                          <div className="ss-level-segment v" style={{ width: `${(entry.V / entry.total) * 100}%` }} title={formatLevelLabel('V', entry.V, entry.total)}>
+                            {getLevelName('V')} - {entry.V} ({toPercent(entry.V, entry.total)}%)
                           </div>
                         </div>
-                        <div className="ss-level-total">{entry.total}</div>
+                        <div className="ss-level-total">Total cursos {entry.total}</div>
                       </div>
                     ))}
                   </div>
@@ -1276,9 +1476,9 @@ function App() {
                             <th
                               key={`heat-head-${objective.id}`}
                               className="ss-heat-head"
-                              data-tooltip={objective.description}
                             >
-                              <span>OBJ-{objective.id}</span>
+                              <span className="ss-heat-head-label">OBJ-{objective.id}</span>
+                              <span className="ss-heat-tooltip">{objective.description}</span>
                             </th>
                           ))}
                         </tr>
@@ -1366,43 +1566,68 @@ function App() {
                 </section>
 
                 <section className="ss-card">
-                  <h3>Matriz curricular</h3>
+                  <div className="ss-card-header ss-objectives-header">
+                    <h3>Matriz curricular</h3>
+                  </div>
                   <div className="ss-table-wrap">
                     <table className="ss-table">
                       <thead>
                         <tr>
+                          <th></th>
                           <th>Programa</th>
                           <th>Cursos / asignaturas</th>
                           <th>Competencias y objetivos</th>
-                          <th>Niveles</th>
                         </tr>
                       </thead>
                       <tbody>
                         {displayedCourses.map((course) => {
                           const courseObjectives = getCourseObjectives(course)
+                          const matrixAssignments = courseObjectives.map((objective) => ({
+                            objective_id: String(objective.id),
+                            contribution_level: normalizeLevel(objective.pivot?.contribution_level),
+                          }))
 
                           return (
                             <tr key={course.id}>
+                              <td className="ss-matrix-plus-cell">
+                                <button
+                                  className="ss-matrix-plus-button"
+                                  type="button"
+                                  onClick={(event) => {
+                                    const rect = event.currentTarget.getBoundingClientRect()
+                                    openMatrixEditor(course, null, { left: rect.left, top: rect.bottom + 8 })
+                                  }}
+                                >
+                                  +
+                                </button>
+                              </td>
                               <td>{course.program?.name || 'Sin programa'}</td>
                               <td><strong>{course.name}</strong></td>
                               <td>
-                                <div className="ss-token-list">
-                                  {courseObjectives.length === 0 && <span className="ss-token muted">Sin objetivos</span>}
-                                  {courseObjectives.map((objective) => (
-                                    <span key={`${course.id}-${objective.id}`} className="ss-token">
-                                      <strong>{objective.competency?.name || 'Competencia'}</strong>
-                                      <small>{objective.description.slice(0, 55)}</small>
-                                    </span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="ss-cell-levels">
-                                <div className="ss-level-group">
-                                  {courseObjectives.map((objective) => (
-                                    <span key={`lvl-${course.id}-${objective.id}`} className={`ss-level-pill lvl-${objective.pivot?.contribution_level || 'E'}`}>
-                                      {objective.pivot?.contribution_level || '-'}
-                                    </span>
-                                  ))}
+                                <div className="ss-matrix-editor">
+                                  {matrixAssignments.length === 0 && <span className="ss-token muted">Sin objetivos</span>}
+                                  {matrixAssignments.map((assignment) => {
+                                    const objective = objectives.find((item) => Number(item.id) === Number(assignment.objective_id))
+
+                                    return (
+                                      <div
+                                        key={`${course.id}-${assignment.objective_id}`}
+                                        className="ss-matrix-chip"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault()
+                                          openMatrixEditor(course, assignment, { left: event.clientX, top: event.clientY })
+                                        }}
+                                      >
+                                        <div className="ss-matrix-chip-body">
+                                          <strong>{objective?.competency?.name || 'Competencia'}</strong>
+                                          <small>{objective?.description.slice(0, 55)}</small>
+                                        </div>
+                                        <span className={`ss-level-pill lvl-${assignment.contribution_level}`}>
+                                          {getLevelName(assignment.contribution_level)}
+                                        </span>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                               </td>
                             </tr>
@@ -1444,19 +1669,6 @@ function App() {
                       <button className="ss-btn ss-btn-primary" onClick={() => setIsAddingObjective((current) => !current)} disabled={saving}>
                         + Añadir objetivo
                       </button>
-                      <button
-                        className="ss-btn ss-btn-danger"
-                        onClick={() => {
-                          const objective = displayedObjectives.find((item) => item.id === selectedObjectiveId)
-                          if (objective) {
-                            deleteObjectiveWithHistory(cloneObjective(objective))
-                            setSelectedObjectiveId(null)
-                          }
-                        }}
-                        disabled={saving || !selectedObjectiveId}
-                      >
-                        Eliminar
-                      </button>
                     </div>
                   </div>
 
@@ -1472,6 +1684,7 @@ function App() {
                     <table className="ss-table">
                       <thead>
                         <tr>
+                          <th>Programa</th>
                           <th>ID</th>
                           <th>Objetivo</th>
                           <th>Competencia</th>
@@ -1482,6 +1695,7 @@ function App() {
                       <tbody>
                         {isAddingObjective && (
                           <tr>
+                            <td>Programa</td>
                             <td>Nuevo</td>
                             <td>
                               <input
@@ -1510,15 +1724,21 @@ function App() {
                           const linkedCourses = displayedCourses.filter((course) =>
                             getCourseObjectives(course).some((item) => item.id === objective.id),
                           )
+                          const objectiveProgramName = objective.competency?.program?.name || 'Sin programa'
 
                           return (
                             <tr
                               key={objective.id}
-                              className={selectedObjectiveId === objective.id ? 'ss-row-selected' : ''}
-                              onClick={() => setSelectedObjectiveId(objective.id)}
                             >
+                              <td>{objectiveProgramName}</td>
                               <td>OBJ-{objective.id}</td>
-                              <td>
+                              <td
+                                className="ss-context-editable"
+                                onContextMenu={(event) => {
+                                  event.preventDefault()
+                                  openObjectiveEditor(objective, { left: event.clientX, top: event.clientY })
+                                }}
+                              >
                                 {isObjectivesEditing ? (
                                   <input
                                     value={objectiveDrafts[objective.id]?.description ?? objective.description}
@@ -1528,7 +1748,13 @@ function App() {
                                   objective.description
                                 )}
                               </td>
-                              <td>
+                              <td
+                                className="ss-context-editable"
+                                onContextMenu={(event) => {
+                                  event.preventDefault()
+                                  openObjectiveEditor(objective, { left: event.clientX, top: event.clientY })
+                                }}
+                              >
                                 {isObjectivesEditing ? (
                                   <select
                                     value={objectiveDrafts[objective.id]?.competency_id ?? String(objective.competency_id ?? objective.competency?.id ?? '')}
@@ -1746,6 +1972,108 @@ function App() {
             )}
           </main>
         </div>
+
+        {matrixEditor && matrixEditorCourse && (
+          <div className="ss-editor-overlay" onClick={closeMatrixEditor}>
+            <div
+              className="ss-editor-popover"
+              style={{ left: `${matrixEditor.position?.left ?? 32}px`, top: `${matrixEditor.position?.top ?? 32}px` }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h4>{matrixEditor.originalObjectiveId ? 'Editar relación' : 'Agregar relación'}</h4>
+              <label>
+                Competencia
+                <select
+                  value={matrixEditor.competency_id}
+                  onChange={(event) => setMatrixEditor((current) => ({ ...current, competency_id: event.target.value, objective_id: '' }))}
+                >
+                  <option value="">Selecciona una competencia</option>
+                  {matrixEditorCompetencies.map((competency) => (
+                    <option key={competency.id} value={competency.id}>{competency.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Objetivo
+                <select
+                  value={matrixEditor.objective_id}
+                  onChange={(event) => setMatrixEditor((current) => ({ ...current, objective_id: event.target.value }))}
+                >
+                  <option value="">Selecciona un objetivo</option>
+                  {matrixEditorObjectives.map((objective) => (
+                    <option key={objective.id} value={objective.id}>{objective.description}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Nivel
+                <select
+                  value={matrixEditor.contribution_level}
+                  onChange={(event) => setMatrixEditor((current) => ({ ...current, contribution_level: event.target.value }))}
+                >
+                  {LEVELS.map((level) => (
+                    <option key={level} value={level}>{getLevelName(level)}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="ss-actions ss-editor-actions">
+                {matrixEditor.originalObjectiveId && (
+                  <button className="ss-btn ss-btn-danger" type="button" onClick={removeMatrixEditorAssignment} disabled={saving}>
+                    Quitar
+                  </button>
+                )}
+                <button className="ss-btn ss-btn-ghost" type="button" onClick={closeMatrixEditor} disabled={saving}>
+                  Cancelar
+                </button>
+                <button className="ss-btn ss-btn-primary" type="button" onClick={saveMatrixEditor} disabled={saving || !matrixEditor.objective_id}>
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {objectiveEditor && objectiveEditorTarget && (
+          <div className="ss-editor-overlay" onClick={closeObjectiveEditor}>
+            <div
+              className="ss-editor-popover"
+              style={{ left: `${objectiveEditor.position?.left ?? 32}px`, top: `${objectiveEditor.position?.top ?? 32}px` }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h4>Editar objetivo</h4>
+              <label>
+                Descripción
+                <textarea
+                  value={objectiveEditor.description}
+                  onChange={(event) => setObjectiveEditor((current) => ({ ...current, description: event.target.value }))}
+                />
+              </label>
+              <label>
+                Competencia
+                <select
+                  value={objectiveEditor.competency_id}
+                  onChange={(event) => setObjectiveEditor((current) => ({ ...current, competency_id: event.target.value }))}
+                >
+                  <option value="">Selecciona una competencia</option>
+                  {objectiveEditorCompetencies.map((competency) => (
+                    <option key={competency.id} value={competency.id}>{competency.name}</option>
+                  ))}
+                </select>
+              </label>
+              <p className="ss-editor-meta">
+                {objectiveEditorTarget.competency?.program?.name || 'Sin programa'}
+              </p>
+              <div className="ss-actions ss-editor-actions">
+                <button className="ss-btn ss-btn-ghost" type="button" onClick={closeObjectiveEditor} disabled={saving}>
+                  Cancelar
+                </button>
+                <button className="ss-btn ss-btn-primary" type="button" onClick={saveObjectiveEditor} disabled={saving || !objectiveEditor.competency_id}>
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {undoToast && (
           <div className="ss-undo-toast" role="status" aria-live="polite">

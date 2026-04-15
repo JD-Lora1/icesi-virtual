@@ -90,7 +90,7 @@ class AcademicController extends Controller
                     $coursesQuery->where('course_objective_pivot.contribution_level', $contributionLevel);
                 });
             })
-            ->with(['competency', 'courses'])
+            ->with(['competency.program', 'courses'])
             ->orderBy('id')
             ->get();
 
@@ -104,14 +104,14 @@ class AcademicController extends Controller
             'competency_id' => ['required', 'integer', 'exists:competencies,id'],
         ]);
 
-        $objective = LearningObjective::create($validated)->load(['competency', 'courses']);
+        $objective = LearningObjective::create($validated)->load(['competency.program', 'courses']);
 
         return response()->json($objective, 201);
     }
 
     public function showObjective(LearningObjective $objective): JsonResponse
     {
-        return response()->json($objective->load(['competency', 'courses']));
+        return response()->json($objective->load(['competency.program', 'courses']));
     }
 
     public function updateObjective(Request $request, LearningObjective $objective): JsonResponse
@@ -123,7 +123,7 @@ class AcademicController extends Controller
 
         $objective->update($validated);
 
-        return response()->json($objective->fresh()->load(['competency', 'courses']));
+        return response()->json($objective->fresh()->load(['competency.program', 'courses']));
     }
 
     public function destroyObjective(LearningObjective $objective): JsonResponse

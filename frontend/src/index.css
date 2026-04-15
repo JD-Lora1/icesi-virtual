@@ -70,6 +70,44 @@ a {
   gap: 0.85rem;
 }
 
+.theme-light .ss-heat-tooltip {
+  background: #ffffff;
+  border-color: #bdd2ed;
+  color: #1a3d66;
+  box-shadow: 0 10px 24px rgba(47, 88, 145, 0.2);
+}
+
+.theme-light .ss-editor-popover {
+  border-color: #bdd2ed;
+  background: linear-gradient(150deg, #ffffff, #f6faff);
+}
+
+.theme-light .ss-editor-popover h4,
+.theme-light .ss-editor-popover label,
+.theme-light .ss-editor-meta {
+  color: #1a3d66;
+}
+
+.theme-light .ss-matrix-chip {
+  border-color: #cbd9eb;
+  background: #f6faff;
+}
+
+.theme-light .ss-matrix-chip-body strong,
+.theme-light .ss-matrix-chip-body small {
+  color: #14365f;
+}
+
+.theme-light .ss-matrix-plus-button {
+  border-color: #b8cde9;
+  background: #edf4fd;
+  color: #17375f;
+}
+
+.theme-light .ss-context-editable {
+  background: transparent;
+}
+
 .ss-topbar-main {
   display: flex;
   align-items: flex-start;
@@ -458,7 +496,7 @@ a {
 
 .ss-level-row {
   display: grid;
-  grid-template-columns: minmax(170px, 240px) minmax(250px, 1fr) 44px;
+  grid-template-columns: minmax(170px, 260px) minmax(300px, 1fr) 160px;
   gap: 0.55rem;
   align-items: center;
 }
@@ -550,17 +588,21 @@ a {
   cursor: help;
 }
 
-.ss-heat-head::after {
-  content: attr(data-tooltip);
+.ss-heat-head-label {
+  position: relative;
+  z-index: 1;
+}
+
+.ss-heat-tooltip {
   position: absolute;
   left: 50%;
-  top: -0.5rem;
-  transform: translate(-50%, -100%);
-  width: min(280px, 45vw);
+  top: calc(100% + 0.45rem);
+  transform: translateX(-50%) translateY(-4px);
+  width: min(300px, 40vw);
   border-radius: 0.58rem;
   padding: 0.48rem 0.58rem;
   background: rgba(14, 24, 40, 0.97);
-  border: 1px solid rgba(125, 170, 235, 0.4);
+  border: 1px solid rgba(125, 170, 235, 0.42);
   color: #deebff;
   font-size: 0.74rem;
   text-transform: none;
@@ -569,13 +611,14 @@ a {
   white-space: normal;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.08s ease, transform 0.08s ease;
   z-index: 12;
   box-shadow: 0 10px 24px rgba(3, 9, 18, 0.45);
 }
 
-.ss-heat-head:hover::after {
+.ss-heat-head:hover .ss-heat-tooltip {
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .ss-heat-course {
@@ -795,6 +838,123 @@ textarea:focus {
 
 .ss-token.compact {
   padding: 0.2rem 0.45rem;
+}
+
+.ss-matrix-editor {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ss-matrix-chip {
+  display: grid;
+  gap: 0.45rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(99, 147, 211, 0.24);
+  background: rgba(26, 41, 68, 0.55);
+  padding: 0.55rem 0.6rem;
+  cursor: context-menu;
+}
+
+.ss-matrix-chip-body {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.ss-matrix-chip-body strong {
+  color: #eaf2ff;
+}
+
+.ss-matrix-chip-body small {
+  color: #b5c8e5;
+}
+
+.ss-matrix-chip-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ss-matrix-chip-controls select {
+  flex: 1;
+}
+
+.ss-matrix-add-row {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ss-matrix-add-row select {
+  width: 100%;
+}
+
+.ss-matrix-plus-cell {
+  width: 3rem;
+}
+
+.ss-matrix-plus-button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(99, 147, 211, 0.34);
+  background: rgba(45, 91, 170, 0.18);
+  color: #ddecff;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ss-matrix-plus-button:hover {
+  background: rgba(45, 91, 170, 0.28);
+}
+
+.ss-context-editable {
+  cursor: context-menu;
+}
+
+.ss-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(4, 8, 15, 0.18);
+}
+
+.ss-editor-popover {
+  position: fixed;
+  min-width: 320px;
+  max-width: min(420px, calc(100vw - 2rem));
+  padding: 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(125, 170, 235, 0.42);
+  background: linear-gradient(150deg, rgba(16, 25, 39, 0.98), rgba(10, 16, 27, 0.98));
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.35);
+  display: grid;
+  gap: 0.7rem;
+}
+
+.ss-editor-popover h4 {
+  margin: 0;
+  color: #f4f8ff;
+}
+
+.ss-editor-popover label {
+  display: grid;
+  gap: 0.35rem;
+  color: #9db4d5;
+  font-size: 0.76rem;
+}
+
+.ss-editor-popover textarea {
+  min-height: 96px;
+}
+
+.ss-editor-actions {
+  justify-content: flex-end;
+}
+
+.ss-editor-meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #97b0cf;
 }
 
 .ss-level-group {
@@ -1181,6 +1341,15 @@ textarea:focus {
   .ss-topbar-filter-row {
     grid-template-columns: 1fr;
   }
+
+  .ss-level-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ss-matrix-chip-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @media (max-width: 740px) {
@@ -1278,10 +1447,13 @@ textarea:focus {
 .theme-light .ss-card p,
 .theme-light .ss-list li small,
 .theme-light .ss-token small,
-.theme-light .ss-bar-head,
-.theme-light .ss-table th,
-.theme-light .ss-empty-row {
-  color: #5a7392;
+.theme-light .ss-level-summary,
+.theme-light .ss-section-help,
+.theme-light .ss-level-title,
+.theme-light .ss-level-total,
+.theme-light .ss-radar-metrics label,
+.theme-light .ss-radar-metrics small {
+  color: #5b7697;
 }
 
 .theme-light .ss-donut-meta,
@@ -1289,12 +1461,10 @@ textarea:focus {
   color: #446588;
 }
 
-.theme-light .ss-section-help,
-.theme-light .ss-level-title,
-.theme-light .ss-level-total,
-.theme-light .ss-radar-metrics label,
-.theme-light .ss-radar-metrics small {
-  color: #5b7697;
+.theme-light .ss-bar-head,
+.theme-light .ss-table th,
+.theme-light .ss-empty-row {
+  color: #5a7392;
 }
 
 .theme-light .ss-level-stack,
@@ -1306,6 +1476,21 @@ textarea:focus {
 
 .theme-light .ss-radar-metrics article {
   background: #f7fbff;
+}
+
+.theme-light .ss-matrix-chip,
+.theme-light .ss-matrix-add-row {
+  border-color: #cbd9eb;
+  background: #f6faff;
+}
+
+.theme-light .ss-matrix-chip-body strong,
+.theme-light .ss-matrix-chip-body small {
+  color: #14365f;
+}
+
+.theme-light .ss-level-summary {
+  color: #5d7696;
 }
 
 .theme-light .ss-heatmap th:first-child,
@@ -1321,10 +1506,6 @@ textarea:focus {
 .theme-light .ss-radar-grid,
 .theme-light .ss-radar-axis {
   stroke: #c6d7ec;
-}
-
-.theme-light .ss-radar-label {
-  fill: #5f7899;
 }
 
 .theme-light .ss-radar-shape {
