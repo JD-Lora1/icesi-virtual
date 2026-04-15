@@ -255,6 +255,20 @@ function App() {
     return nextCourses
   }, [courses, filters])
 
+  const matrixDisplayedCourses = useMemo(() => {
+    let nextCourses = courses
+
+    if (filters.program_id) {
+      nextCourses = nextCourses.filter((course) => Number(course.program_id) === Number(filters.program_id))
+    }
+
+    if (filters.course_id) {
+      nextCourses = nextCourses.filter((course) => Number(course.id) === Number(filters.course_id))
+    }
+
+    return nextCourses
+  }, [courses, filters.course_id, filters.program_id])
+
   const availableCoursesForFilters = useMemo(() => {
     let nextCourses = courses
 
@@ -1791,12 +1805,31 @@ function App() {
                           </tr>
                         )}
 
-                        {courses.map((course) => {
+                        {matrixDisplayedCourses.map((course) => {
                           const courseObjectives = getCourseObjectives(course)
-                          const matrixAssignments = courseObjectives.map((objective) => ({
-                            objective_id: String(objective.id),
-                            contribution_level: normalizeLevel(objective.pivot?.contribution_level),
-                          }))
+                          const matrixAssignments = courseObjectives
+                            .filter((objective) => {
+                              const level = normalizeLevel(objective.pivot?.contribution_level)
+
+                              if (filters.competency_id && Number(objective.competency_id) !== Number(filters.competency_id)) {
+                                return false
+                              }
+
+                              if (filters.objective_id && Number(objective.id) !== Number(filters.objective_id)) {
+                                return false
+                              }
+
+                              if (filters.contribution_level && level !== String(filters.contribution_level).toUpperCase()) {
+                                return false
+                              }
+
+                              return true
+                            })
+                            .map((objective) => ({
+                              objective,
+                              objective_id: String(objective.id),
+                              contribution_level: normalizeLevel(objective.pivot?.contribution_level),
+                            }))
 
                           return (
                             <tr key={course.id}>
@@ -1818,7 +1851,7 @@ function App() {
                                 <div className="ss-matrix-editor">
                                   {matrixAssignments.length === 0 && <span className="ss-token muted">Sin objetivos</span>}
                                   {matrixAssignments.map((assignment) => {
-                                    const objective = objectives.find((item) => Number(item.id) === Number(assignment.objective_id))
+                                    const objective = assignment.objective
 
                                     return (
                                       <div
@@ -1845,7 +1878,7 @@ function App() {
                           )
                         })}
 
-                        {courses.length === 0 && !isAddingMatrixCourse && (
+                        {matrixDisplayedCourses.length === 0 && !isAddingMatrixCourse && (
                           <tr>
                             <td colSpan="4" className="ss-empty-row">No hay cursos para los filtros seleccionados.</td>
                           </tr>
