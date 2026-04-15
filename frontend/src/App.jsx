@@ -127,6 +127,8 @@ function App() {
   const [isAddingObjective, setIsAddingObjective] = useState(false)
   const [newObjectiveDraft, setNewObjectiveDraft] = useState({ description: '', competency_id: '' })
   const [objectiveDrafts, setObjectiveDrafts] = useState({})
+  const [isAddingMatrixCourse, setIsAddingMatrixCourse] = useState(false)
+  const [matrixCourseDraft, setMatrixCourseDraft] = useState({ name: '', program_id: '' })
 
   const [selectedCrudProgramId, setSelectedCrudProgramId] = useState('')
   const [matrixEditor, setMatrixEditor] = useState(null)
@@ -838,8 +840,6 @@ function App() {
   const resetObjectiveForm = () => setObjectiveForm({ id: null, description: '', competency_id: '' })
   const resetCourseForm = () => {
     setCourseForm({ id: null, name: '', program_id: selectedCrudProgramId || '' })
-    setAssignmentDraft([])
-    setAssignmentInput({ objective_id: '', contribution_level: 'I' })
   }
 
   const loadCourseIntoForm = (courseId) => {
@@ -856,13 +856,38 @@ function App() {
       name: selectedCourse.name,
       program_id: String(selectedCourse.program_id ?? ''),
     })
-    setAssignmentDraft(
-      getCourseObjectives(selectedCourse).map((objective) => ({
-        objective_id: String(objective.id),
-        contribution_level: normalizeLevel(objective.pivot?.contribution_level),
-      })),
-    )
-    setAssignmentInput({ objective_id: '', contribution_level: 'I' })
+  }
+
+  const resetMatrixCourseDraft = () => {
+    setMatrixCourseDraft({ name: '', program_id: selectedCrudProgramId || '' })
+  }
+
+  const saveMatrixCourseDraft = async () => {
+    if (!matrixCourseDraft.name || !matrixCourseDraft.program_id) {
+      setError('Debes completar el nombre y el programa del curso.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+
+    try {
+      await apiRequest('/courses', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: matrixCourseDraft.name,
+          program_id: Number(matrixCourseDraft.program_id),
+        }),
+      })
+
+      setIsAddingMatrixCourse(false)
+      resetMatrixCourseDraft()
+      await reloadAll()
+    } catch (saveError) {
+      setError(saveError.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const saveProgram = async (event) => {
@@ -993,21 +1018,11 @@ function App() {
     try {
       const method = courseForm.id ? 'PATCH' : 'POST'
       const path = courseForm.id ? `/courses/${courseForm.id}` : '/courses'
-      const course = await apiRequest(path, {
+      await apiRequest(path, {
         method,
         body: JSON.stringify({
           name: courseForm.name,
           program_id: Number(courseForm.program_id || selectedCrudProgramId),
-        }),
-      })
-
-      await apiRequest(`/courses/${course.id}/objectives`, {
-        method: 'POST',
-        body: JSON.stringify({
-          objective_assignments: assignmentDraft.map((entry) => ({
-            objective_id: Number(entry.objective_id),
-            contribution_level: entry.contribution_level,
-          })),
         }),
       })
 
@@ -1705,6 +1720,19 @@ function App() {
                 <section className="ss-card">
                   <div className="ss-card-header ss-objectives-header">
                     <h3>Matriz curricular</h3>
+                    <div className="ss-actions">
+                      <button
+                        className="ss-btn ss-btn-primary"
+                        type="button"
+                        onClick={() => {
+                          setIsAddingMatrixCourse(true)
+                          resetMatrixCourseDraft()
+                        }}
+                        disabled={saving || isAddingMatrixCourse}
+                      >
+                        + Añadir curso
+                      </button>
+                    </div>
                   </div>
                   <div className="ss-table-wrap">
                     <table className="ss-table">
@@ -1717,7 +1745,53 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {displayedCourses.map((course) => {
+                        {isAddingMatrixCourse && (
+                          <tr>
+                            <td className="ss-matrix-plus-cell">
+                              <button
+                                className="ss-matrix-plus-button"
+                                type="button"
+                                onClick={saveMatrixCourseDraft}
+                                disabled={saving || !matrixCourseDraft.name || !matrixCourseDraft.program_id}
+                              >
+                                +
+                              </button>
+                            </td>
+                            <td>
+                              <select
+                                value={matrixCourseDraft.program_id}
+                                onChange={(event) => setMatrixCourseDraft((current) => ({ ...current, program_id: event.target.value }))}
+                              >
+                                <option value="">Programa</option>
+                                {programs.map((program) => (
+                                  <option key={program.id} value={program.id}>{program.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input
+                                value={matrixCourseDraft.name}
+                                onChange={(event) => setMatrixCourseDraft((current) => ({ ...current, name: event.target.value }))}
+                                placeholder="Nombre del curso"
+                              />
+                            </td>
+                            <td>
+                              <div className="ss-actions">
+                                <button className="ss-btn ss-btn-ghost" type="button" onClick={() => {
+                                  setIsAddingMatrixCourse(false)
+                                  resetMatrixCourseDraft()
+                                }} disabled={saving}>
+                                  Cancelar
+                                </button>
+                                <button className="ss-btn ss-btn-primary" type="button" onClick={saveMatrixCourseDraft} disabled={saving || !matrixCourseDraft.name || !matrixCourseDraft.program_id}>
+                                  Guardar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                        {courses.map((course) => {
                           const courseObjectives = getCourseObjectives(course)
                           const matrixAssignments = courseObjectives.map((objective) => ({
                             objective_id: String(objective.id),
@@ -1771,7 +1845,7 @@ function App() {
                           )
                         })}
 
-                        {displayedCourses.length === 0 && (
+                        {courses.length === 0 && !isAddingMatrixCourse && (
                           <tr>
                             <td colSpan="4" className="ss-empty-row">No hay cursos para los filtros seleccionados.</td>
                           </tr>
@@ -2056,18 +2130,18 @@ function App() {
                 </article>
 
                 <article className="ss-card ss-span-two">
-                  <h3>Cursos y niveles I/F/V</h3>
+                  <h3>Cursos</h3>
                   <form onSubmit={saveCourse} className="ss-form">
+                    <label>
+                      Curso existente
+                      <select value={courseForm.id || ''} onChange={(event) => loadCourseIntoForm(event.target.value)}>
+                        <option value="">Crear nuevo curso</option>
+                        {crudCourses.map((course) => (
+                          <option key={course.id} value={course.id}>{course.name}</option>
+                        ))}
+                      </select>
+                    </label>
                     <div className="ss-grid-two">
-                      <label className="ss-span-two">
-                        Curso existente
-                        <select value={courseForm.id || ''} onChange={(event) => loadCourseIntoForm(event.target.value)}>
-                          <option value="">Crear nuevo curso</option>
-                          {crudCourses.map((course) => (
-                            <option key={course.id} value={course.id}>{course.name}</option>
-                          ))}
-                        </select>
-                      </label>
                       <input value={courseForm.name} onChange={(event) => setCourseForm({ ...courseForm, name: event.target.value })} placeholder="Nombre del curso" required />
                       <select value={courseForm.program_id || selectedCrudProgramId || ''} onChange={(event) => setCourseForm({ ...courseForm, program_id: event.target.value })} required>
                         <option value="">Programa</option>
@@ -2076,43 +2150,25 @@ function App() {
                         ))}
                       </select>
                     </div>
-
-                    <div className="ss-assignment-builder">
-                      <select value={assignmentInput.objective_id} onChange={(event) => setAssignmentInput({ ...assignmentInput, objective_id: event.target.value })}>
-                        <option value="">Objetivo para asignar</option>
-                        {courseOptionsObjectives.map((objective) => (
-                          <option key={objective.id} value={objective.id}>{objective.description.slice(0, 58)}</option>
-                        ))}
-                      </select>
-
-                      <select value={assignmentInput.contribution_level} onChange={(event) => setAssignmentInput({ ...assignmentInput, contribution_level: event.target.value })}>
-                        {LEVELS.map((level) => (
-                          <option key={level} value={level}>Nivel {level}</option>
-                        ))}
-                      </select>
-
-                      <button className="ss-btn ss-btn-ghost" type="button" onClick={addAssignment}>Agregar</button>
-                    </div>
-
-                    <div className="ss-token-list compact">
-                      {assignmentDraft.map((entry) => {
-                        const objectiveName = objectives.find((objective) => objective.id === Number(entry.objective_id))?.description || `Objetivo ${entry.objective_id}`
-
-                        return (
-                          <span key={`draft-${entry.objective_id}`} className="ss-token">
-                            <small>{objectiveName}</small>
-                            <strong>{entry.contribution_level}</strong>
-                            <button type="button" className="ss-token-remove" onClick={() => removeAssignment(entry.objective_id)}>x</button>
-                          </span>
-                        )
-                      })}
-                    </div>
-
                     <div className="ss-actions">
                       <button className="ss-btn ss-btn-primary" type="submit" disabled={saving}>{courseForm.id ? 'Actualizar' : 'Crear'}</button>
                       {courseForm.id && <button className="ss-btn ss-btn-ghost" type="button" onClick={resetCourseForm}>Cancelar</button>}
                     </div>
                   </form>
+                  <ul className="ss-list">
+                    {crudCourses.map((course) => (
+                      <li key={course.id}>
+                        <div>
+                          <strong>{course.name}</strong>
+                          <small>{course.program?.name || programs.find((program) => Number(program.id) === Number(course.program_id))?.name || 'Sin programa'} · {getCourseObjectives(course).length} objetivos</small>
+                        </div>
+                        <div className="ss-actions">
+                          <button className="ss-btn ss-btn-ghost" onClick={() => loadCourseIntoForm(course.id)}>Editar</button>
+                          <button className="ss-btn ss-btn-danger" onClick={() => deleteEntity(`/courses/${course.id}`, 'Eliminar este curso?')}>Eliminar</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </article>
               </section>
             )}
