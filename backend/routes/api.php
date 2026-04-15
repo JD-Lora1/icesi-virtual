@@ -3,10 +3,13 @@
 use App\Http\Controllers\Api\AcademicController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\ProgramController;
 use App\Http\Controllers\Api\StatsController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthController::class);
+
+Route::apiResource('programs', ProgramController::class);
 
 Route::apiResource('courses', CourseController::class);
 Route::post('courses/{course}/objectives', [CourseController::class, 'syncObjectives']);
@@ -24,3 +27,5 @@ Route::match(['put', 'patch'], 'learning-objectives/{objective}', [AcademicContr
 Route::delete('learning-objectives/{objective}', [AcademicController::class, 'destroyObjective']);
 
 Route::get('stats', [StatsController::class, 'getStats']);
+Route::get('stats/analytics', [StatsController::class, 'getAnalytics']);
+Route::get('stats/report', [StatsController::class, 'getReport']);

@@ -11,7 +11,26 @@ class CourseController extends Controller
 {
     public function index(): JsonResponse
     {
-        $courses = Course::with(['program', 'learningObjectives.competency'])
+        $courses = Course::query()
+            ->when(request('program_id'), function ($query, $programId) {
+                $query->where('program_id', $programId);
+            })
+            ->when(request('competency_id'), function ($query, $competencyId) {
+                $query->whereHas('learningObjectives', function ($objectivesQuery) use ($competencyId) {
+                    $objectivesQuery->where('competency_id', $competencyId);
+                });
+            })
+            ->when(request('objective_id'), function ($query, $objectiveId) {
+                $query->whereHas('learningObjectives', function ($objectivesQuery) use ($objectiveId) {
+                    $objectivesQuery->where('learning_objectives.id', $objectiveId);
+                });
+            })
+            ->when(request('contribution_level'), function ($query, $contributionLevel) {
+                $query->whereHas('learningObjectives', function ($objectivesQuery) use ($contributionLevel) {
+                    $objectivesQuery->where('course_objective_pivot.contribution_level', $contributionLevel);
+                });
+            })
+            ->with(['program', 'learningObjectives.competency'])
             ->orderBy('id')
             ->get();
 
@@ -57,7 +76,7 @@ class CourseController extends Controller
     public function syncObjectives(Request $request, Course $course): JsonResponse
     {
         $validated = $request->validate([
-            'objective_assignments' => ['required', 'array', 'min:1'],
+            'objective_assignments' => ['present', 'array'],
             'objective_assignments.*.objective_id' => ['required', 'integer', 'exists:learning_objectives,id'],
             'objective_assignments.*.contribution_level' => ['required', 'in:I,F,V'],
         ]);

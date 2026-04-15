@@ -12,7 +12,21 @@ class AcademicController extends Controller
 {
     public function competenciesIndex(): JsonResponse
     {
-        $competencies = Competency::with(['program', 'learningObjectives'])
+        $competencies = Competency::query()
+            ->when(request('program_id'), function ($query, $programId) {
+                $query->where('program_id', $programId);
+            })
+            ->when(request('objective_id'), function ($query, $objectiveId) {
+                $query->whereHas('learningObjectives', function ($objectivesQuery) use ($objectiveId) {
+                    $objectivesQuery->where('learning_objectives.id', $objectiveId);
+                });
+            })
+            ->when(request('course_id'), function ($query, $courseId) {
+                $query->whereHas('learningObjectives.courses', function ($coursesQuery) use ($courseId) {
+                    $coursesQuery->where('courses.id', $courseId);
+                });
+            })
+            ->with(['program', 'learningObjectives'])
             ->orderBy('id')
             ->get();
 
@@ -57,7 +71,26 @@ class AcademicController extends Controller
 
     public function objectivesIndex(): JsonResponse
     {
-        $objectives = LearningObjective::with(['competency', 'courses'])
+        $objectives = LearningObjective::query()
+            ->when(request('competency_id'), function ($query, $competencyId) {
+                $query->where('competency_id', $competencyId);
+            })
+            ->when(request('program_id'), function ($query, $programId) {
+                $query->whereHas('competency', function ($competencyQuery) use ($programId) {
+                    $competencyQuery->where('program_id', $programId);
+                });
+            })
+            ->when(request('course_id'), function ($query, $courseId) {
+                $query->whereHas('courses', function ($coursesQuery) use ($courseId) {
+                    $coursesQuery->where('courses.id', $courseId);
+                });
+            })
+            ->when(request('contribution_level'), function ($query, $contributionLevel) {
+                $query->whereHas('courses', function ($coursesQuery) use ($contributionLevel) {
+                    $coursesQuery->where('course_objective_pivot.contribution_level', $contributionLevel);
+                });
+            })
+            ->with(['competency', 'courses'])
             ->orderBy('id')
             ->get();
 
