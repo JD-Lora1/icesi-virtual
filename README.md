@@ -3,10 +3,12 @@
 Monorepo para un sistema de gestion curricular con:
 
 - `backend/`: Laravel 11 completo, orientado a API REST
-- `frontend/`: React 18 + Vite
+- `frontend/`: React 18 + Vite + Axios + Tailwind CSS + Chart.js
 - `data/`: scripts SQL existentes (`INIT.sql`, `INSERT.sql`, `DROP.sql`)
 - `docker-compose.yml`: orquestacion de PostgreSQL, backend y frontend
-- `start-dev.bat`: arranque sencillo para Windows
+- `start-dev.bat`: arranque Docker para Windows
+- `start-local.bat`: arranque local sencillo en Windows
+- `start-local.sh`: arranque local sencillo en Bash/Git Bash
 
 ## Estructura
 
@@ -21,12 +23,20 @@ icesi-virtual/
 │   ├── artisan
 │   └── composer.json
 ├── frontend/
+│   ├── src/components/DashboardStats.jsx
+│   ├── src/components/TraceabilityMatrix.jsx
 │   ├── src/components/HealthCheck.jsx
+│   ├── src/services/apiClient.js
+│   ├── src/services/apiService.js
 │   ├── src/services/api.js
+│   ├── src/hooks/useAcademicData.js
 │   ├── src/hooks/useHealth.js
 │   ├── src/App.jsx
 │   ├── src/main.jsx
+│   ├── src/index.css
 │   ├── package.json
+│   ├── tailwind.config.js
+│   ├── postcss.config.cjs
 │   ├── vite.config.js
 │   ├── Dockerfile
 │   └── .env.example
@@ -36,6 +46,8 @@ icesi-virtual/
 │   └── DROP.sql
 ├── docker-compose.yml
 ├── start-dev.bat
+├── start-local.bat
+├── start-local.sh
 └── .env.example
 ```
 
@@ -44,7 +56,7 @@ icesi-virtual/
 - Docker Desktop con Docker Compose
 - Windows (para usar `start-dev.bat`)
 
-## Inicio rapido
+## Inicio rapido con Docker
 
 1. En la raiz del proyecto, ejecuta:
 
@@ -66,6 +78,45 @@ El script hace este flujo:
 - Backend: http://localhost:8000
 - PostgreSQL: localhost:5432
 
+## Inicio rapido local
+
+### Windows
+
+```bat
+start-local.bat
+```
+
+### Bash / Git Bash / WSL
+
+```bash
+bash start-local.sh
+```
+
+Estos scripts levantan:
+
+- Backend Laravel: `php artisan serve --host=0.0.0.0 --port=8000`
+- Frontend Vite: `npm run dev -- --host 0.0.0.0 --port 5173`
+
+## Instalacion local
+
+Si quieres instalar dependencias manualmente:
+
+### Backend
+
+```bash
+cd backend
+composer install
+cp .env.example .env
+php artisan key:generate
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+```
+
 ## Endpoint API de ejemplo
 
 Ruta en backend:
@@ -84,11 +135,14 @@ Respuesta esperada (JSON):
 
 ## Frontend: ejemplo de consumo
 
-El frontend incluye ejemplo de consumo con `fetch` en:
+El frontend incluye la capa de consumo API con Axios en:
 
-- `frontend/src/services/api.js`
+- `frontend/src/services/apiClient.js`
+- `frontend/src/services/apiService.js`
+- `frontend/src/hooks/useAcademicData.js`
+- `frontend/src/components/DashboardStats.jsx`
+- `frontend/src/components/TraceabilityMatrix.jsx`
 - `frontend/src/hooks/useHealth.js`
-- `frontend/src/components/HealthCheck.jsx`
 
 ## Backend Laravel
 
@@ -102,6 +156,19 @@ Archivos clave:
 - `backend/bootstrap/app.php` (habilita rutas API)
 - `backend/routes/api.php` (ruta `/api/health`)
 - `backend/app/Http/Controllers/Api/HealthController.php` (controller ejemplo)
+
+## API disponible
+
+- `GET /api/health`
+- `GET /api/courses`
+- `POST /api/courses`
+- `PUT/PATCH /api/courses/{course}`
+- `DELETE /api/courses/{course}`
+- `GET /api/competencies`
+- `POST /api/competencies`
+- `GET /api/learning-objectives`
+- `POST /api/learning-objectives`
+- `GET /api/stats`
 
 ## Comandos utiles
 

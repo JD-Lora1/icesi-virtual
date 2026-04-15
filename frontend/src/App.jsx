@@ -1,4 +1,5 @@
 import DashboardStats from './components/DashboardStats.jsx';
+import AcademicManagement from './components/AcademicManagement.jsx';
 import TraceabilityMatrix from './components/TraceabilityMatrix.jsx';
 import { useAcademicData } from './hooks/useAcademicData.js';
 
@@ -21,6 +22,7 @@ function App() {
       <div className="space-y-8">
         <DashboardStats stats={academicData.stats} loading={academicData.loading} error={academicData.error} />
         <TraceabilityMatrix {...academicData} />
+        <AcademicManagement {...academicData} />
       </div>
     </main>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getCourses,
   getCompetencies,
@@ -53,43 +53,42 @@ export function useAcademicData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const loadAcademicData = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const [coursesData, competenciesData, objectivesData, statsData] = await Promise.all([
+        getCourses(),
+        getCompetencies(),
+        getObjectives(),
+        getStats(),
+      ]);
+
+      setCourses(coursesData);
+      setCompetencies(competenciesData);
+      setObjectives(objectivesData);
+      setStats(statsData);
+      setError('');
+    } catch (requestError) {
+      setError(requestError?.message || 'No fue posible cargar la matriz académica.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
-    async function loadAcademicData() {
-      try {
-        const [coursesData, competenciesData, objectivesData, statsData] = await Promise.all([
-          getCourses(),
-          getCompetencies(),
-          getObjectives(),
-          getStats(),
-        ]);
-
-        if (!active) {
-          return;
-        }
-
-        setCourses(coursesData);
-        setCompetencies(competenciesData);
-        setObjectives(objectivesData);
-        setStats(statsData);
-      } catch (requestError) {
-        if (active) {
-          setError(requestError?.message || 'No fue posible cargar la matriz académica.');
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
+    loadAcademicData().finally(() => {
+      if (!active) {
+        return;
       }
-    }
-
-    loadAcademicData();
+    });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadAcademicData]);
 
   const filteredCourses = useMemo(() => {
     return courses.filter((course) => {
@@ -158,5 +157,6 @@ export function useAcademicData() {
     error,
     setFilter,
     resetFilters,
+    refreshAcademicData: loadAcademicData,
   };
 }
