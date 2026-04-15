@@ -5,6 +5,7 @@ Monorepo para un sistema de gestion curricular con:
 - `backend/`: Laravel 11 completo, orientado a API REST
 - `frontend/`: React 18 + Vite + Axios + Tailwind CSS + Chart.js
 - `data/`: scripts SQL existentes (`INIT.sql`, `INSERT.sql`, `DROP.sql`)
+- `doc/`: diagrama visual del esquema de base de datos (`db_schema_diagram.png` y `.pdf`)
 - `docker-compose.yml`: orquestacion de PostgreSQL, backend y frontend
 - `start-dev.bat`: arranque Docker para Windows
 - `start-local.bat`: arranque local sencillo en Windows
@@ -46,6 +47,9 @@ icesi-virtual/
 │   ├── INIT.sql
 │   ├── INSERT.sql
 │   └── DROP.sql
+├── doc/
+│   ├── db_schema_diagram.png
+│   └── db_schema_diagram.pdf
 ├── docker-compose.yml
 ├── start-dev.bat
 ├── start-local.bat
@@ -118,6 +122,17 @@ php artisan key:generate
 cd frontend
 npm install
 ```
+
+## Documentacion visual
+
+El esquema relacional del proyecto esta documentado en:
+
+- [db_schema_diagram.png](doc/db_schema_diagram.png)
+- [db_schema_diagram.pdf](doc/db_schema_diagram.pdf)
+
+Vista previa:
+
+![Diagrama de base de datos](doc/db_schema_diagram.png)
 
 ## Endpoint API de ejemplo
 
