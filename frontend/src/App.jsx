@@ -1,48 +1,27 @@
-import HealthCheck from './components/HealthCheck.jsx';
+import DashboardStats from './components/DashboardStats.jsx';
+import TraceabilityMatrix from './components/TraceabilityMatrix.jsx';
 import { useAcademicData } from './hooks/useAcademicData.js';
 
 function App() {
-  const { filteredCourses, loading, error, filters, setFilter, resetFilters } = useAcademicData();
+  const academicData = useAcademicData();
 
   return (
-    <main style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-      <h1>Icesi Virtual - Frontend</h1>
-      <p>Ejemplo de consumo del backend Laravel.</p>
-      <section style={{ marginBottom: '1.5rem' }}>
-        <label>
-          Programa:{' '}
-          <input
-            value={filters.programId}
-            onChange={(event) => setFilter('programId', event.target.value)}
-            placeholder="ID programa"
-          />
-        </label>
-        <label style={{ marginLeft: '1rem' }}>
-          Competencia:{' '}
-          <input
-            value={filters.competencyId}
-            onChange={(event) => setFilter('competencyId', event.target.value)}
-            placeholder="ID competencia"
-          />
-        </label>
-        <label style={{ marginLeft: '1rem' }}>
-          Nivel:{' '}
-          <select value={filters.level} onChange={(event) => setFilter('level', event.target.value)}>
-            <option value="">Todos</option>
-            <option value="I">I</option>
-            <option value="F">F</option>
-            <option value="V">V</option>
-          </select>
-        </label>
-        <button type="button" onClick={resetFilters} style={{ marginLeft: '1rem' }}>
-          Limpiar filtros
-        </button>
+    <main className="mx-auto min-h-screen max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <section className="mb-8 rounded-[2rem] border border-white/10 bg-white/5 px-6 py-8 shadow-glow backdrop-blur-xl sm:px-8">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-200/80">Icesi Virtual Project</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+          Dashboard de trazabilidad curricular
+        </h1>
+        <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
+          Visualiza estadísticas clave y la matriz de relaciones entre cursos, programas, competencias y objetivos
+          con filtrado en tiempo real.
+        </p>
       </section>
 
-      {loading && <p>Cargando matriz academica...</p>}
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
-      {!loading && !error && <p>Courses filtrados: {filteredCourses.length}</p>}
-      <HealthCheck />
+      <div className="space-y-8">
+        <DashboardStats stats={academicData.stats} loading={academicData.loading} error={academicData.error} />
+        <TraceabilityMatrix {...academicData} />
+      </div>
     </main>
   );
 }
