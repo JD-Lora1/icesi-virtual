@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.env
+!.env.example
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# PHP / Laravel
+backend/vendor/
+backend/storage/*.key
+backend/bootstrap/cache/*.php
+
+# Docker
+postgres_data/

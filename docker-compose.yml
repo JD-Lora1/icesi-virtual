@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: icesi_virtual_postgres
+    environment:
+      POSTGRES_DB: icesi_virtual
+      POSTGRES_USER: icesi_user
+      POSTGRES_PASSWORD: icesi_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U icesi_user -d icesi_virtual"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    container_name: icesi_virtual_backend
+    working_dir: /var/www
+    volumes:
+      - ./backend:/var/www
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: icesi_virtual
+      DB_USERNAME: icesi_user
+      DB_PASSWORD: icesi_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "if [ -f artisan ]; then
+      composer install && php artisan serve --host=0.0.0.0 --port=8000;
+      else
+      echo 'Laravel project not initialized in /backend. See README.' && tail -f /dev/null;
+      fi"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: icesi_virtual_frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+    depends_on:
+      - backend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
+volumes:
+  postgres_data:
