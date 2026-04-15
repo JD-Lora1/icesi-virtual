@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 const LEVELS = ['I', 'F', 'V']
@@ -31,6 +31,7 @@ async function apiRequest(path, options = {}) {
 function emptyFilters() {
   return {
     program_id: '',
+    course_id: '',
     competency_id: '',
     objective_id: '',
     contribution_level: '',
@@ -41,9 +42,19 @@ function getCourseObjectives(course) {
   return course.learning_objectives || course.learningObjectives || []
 }
 
+function cloneObjective(objective) {
+  return {
+    id: objective.id,
+    description: objective.description,
+    competency_id: objective.competency_id,
+    competency: objective.competency ? { ...objective.competency } : undefined,
+  }
+}
+
 function App() {
   const [theme, setTheme] = useState('light')
   const [activeView, setActiveView] = useState('inicio')
+
   const [programs, setPrograms] = useState([])
   const [competencies, setCompetencies] = useState([])
   const [objectives, setObjectives] = useState([])
@@ -51,6 +62,7 @@ function App() {
   const [stats, setStats] = useState(null)
   const [analytics, setAnalytics] = useState(null)
   const [report, setReport] = useState(null)
+
   const [filters, setFilters] = useState(emptyFilters)
 
   const [programForm, setProgramForm] = useState({ id: null, name: '' })
@@ -60,62 +72,228 @@ function App() {
 
   const [assignmentDraft, setAssignmentDraft] = useState([])
   const [assignmentInput, setAssignmentInput] = useState({ objective_id: '', contribution_level: 'I' })
+
+  const [isObjectivesEditing, setIsObjectivesEditing] = useState(false)
+  const [isAddingObjective, setIsAddingObjective] = useState(false)
+  const [newObjectiveDraft, setNewObjectiveDraft] = useState({ description: '', competency_id: '' })
+  const [objectiveDrafts, setObjectiveDrafts] = useState({})
+  const [selectedObjectiveId, setSelectedObjectiveId] = useState(null)
+
+  const [selectedCrudProgramId, setSelectedCrudProgramId] = useState('')
+
+  const [historyUndo, setHistoryUndo] = useState([])
+  const [historyRedo, setHistoryRedo] = useState([])
+  const [undoToast, setUndoToast] = useState(null)
+  const undoToastTimerRef = useRef(null)
+
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  const pushHistory = (action, showToast = false) => {
+    setHistoryUndo((current) => [...current.slice(-2), action])
+    setHistoryRedo([])
+
+    if (showToast) {
+      setUndoToast({ label: action.label })
+
+      if (undoToastTimerRef.current) {
+        clearTimeout(undoToastTimerRef.current)
+      }
+
+      undoToastTimerRef.current = setTimeout(() => {
+        setUndoToast(null)
+        undoToastTimerRef.current = null
+      }, 10000)
+    }
+  }
+
+  const executeUndo = async () => {
+    if (historyUndo.length === 0 || saving) return
+    const action = historyUndo[historyUndo.length - 1]
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const nextAction = await action.undo()
+      setHistoryUndo((current) => current.slice(0, -1))
+      setHistoryRedo((current) => [...current.slice(-2), nextAction || action])
+      setUndoToast(null)
+      await reloadAll()
+    } catch (undoError) {
+      setError(undoError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const executeRedo = async () => {
+    if (historyRedo.length === 0 || saving) return
+    const action = historyRedo[historyRedo.length - 1]
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const nextAction = await action.redo()
+      setHistoryRedo((current) => current.slice(0, -1))
+      setHistoryUndo((current) => [...current.slice(-2), nextAction || action])
+      await reloadAll()
+    } catch (redoError) {
+      setError(redoError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const availableCompetenciesForFilters = useMemo(() => {
+    if (!filters.program_id) return competencies
+    return competencies.filter((competency) => Number(competency.program_id) === Number(filters.program_id))
+  }, [competencies, filters.program_id])
+
+  const availableCoursesForFilters = useMemo(() => {
+    if (!filters.program_id) return courses
+    return courses.filter((course) => Number(course.program_id) === Number(filters.program_id))
+  }, [courses, filters.program_id])
+
+  const availableObjectivesForFilters = useMemo(() => {
+    let nextObjectives = objectives
+
+    if (filters.program_id) {
+      const competencyIds = new Set(
+        competencies
+          .filter((competency) => Number(competency.program_id) === Number(filters.program_id))
+          .map((competency) => competency.id),
+      )
+      nextObjectives = nextObjectives.filter((objective) => competencyIds.has(objective.competency_id))
+    }
+
+    if (filters.competency_id) {
+      nextObjectives = nextObjectives.filter(
+        (objective) => Number(objective.competency_id) === Number(filters.competency_id),
+      )
+    }
+
+    return nextObjectives
+  }, [competencies, filters.competency_id, filters.program_id, objectives])
+
+  const displayedCourses = useMemo(() => {
+    let nextCourses = courses
+
+    if (filters.program_id) {
+      nextCourses = nextCourses.filter((course) => Number(course.program_id) === Number(filters.program_id))
+    }
+
+    if (filters.course_id) {
+      nextCourses = nextCourses.filter((course) => Number(course.id) === Number(filters.course_id))
+    }
+
+    if (filters.competency_id) {
+      nextCourses = nextCourses.filter((course) =>
+        getCourseObjectives(course).some(
+          (objective) => Number(objective.competency_id) === Number(filters.competency_id),
+        ),
+      )
+    }
+
+    if (filters.objective_id) {
+      nextCourses = nextCourses.filter((course) =>
+        getCourseObjectives(course).some((objective) => Number(objective.id) === Number(filters.objective_id)),
+      )
+    }
+
+    if (filters.contribution_level) {
+      nextCourses = nextCourses.filter((course) =>
+        getCourseObjectives(course).some(
+          (objective) =>
+            String(objective.pivot?.contribution_level || '').toUpperCase() ===
+            String(filters.contribution_level).toUpperCase(),
+        ),
+      )
+    }
+
+    return nextCourses
+  }, [courses, filters])
+
+  const displayedObjectives = useMemo(() => {
+    let nextObjectives = objectives
+
+    if (filters.program_id) {
+      const competencyIds = new Set(
+        competencies
+          .filter((competency) => Number(competency.program_id) === Number(filters.program_id))
+          .map((competency) => competency.id),
+      )
+      nextObjectives = nextObjectives.filter((objective) => competencyIds.has(objective.competency_id))
+    }
+
+    if (filters.competency_id) {
+      nextObjectives = nextObjectives.filter(
+        (objective) => Number(objective.competency_id) === Number(filters.competency_id),
+      )
+    }
+
+    if (filters.objective_id) {
+      nextObjectives = nextObjectives.filter((objective) => Number(objective.id) === Number(filters.objective_id))
+    }
+
+    if (filters.course_id) {
+      const objectiveIdsInCourse = new Set(
+        displayedCourses.flatMap((course) => getCourseObjectives(course).map((objective) => objective.id)),
+      )
+      nextObjectives = nextObjectives.filter((objective) => objectiveIdsInCourse.has(objective.id))
+    }
+
+    return nextObjectives
+  }, [competencies, displayedCourses, filters, objectives])
+
+  const crudCompetencies = useMemo(() => {
+    if (!selectedCrudProgramId) return competencies
+    return competencies.filter((competency) => Number(competency.program_id) === Number(selectedCrudProgramId))
+  }, [competencies, selectedCrudProgramId])
+
+  const crudCompetencyIds = useMemo(() => new Set(crudCompetencies.map((competency) => competency.id)), [crudCompetencies])
+
+  const crudObjectives = useMemo(() => {
+    if (!selectedCrudProgramId) return objectives
+    return objectives.filter((objective) => crudCompetencyIds.has(objective.competency_id))
+  }, [crudCompetencyIds, objectives, selectedCrudProgramId])
+
+  const crudCourses = useMemo(() => {
+    if (!selectedCrudProgramId) return courses
+    return courses.filter((course) => Number(course.program_id) === Number(selectedCrudProgramId))
+  }, [courses, selectedCrudProgramId])
+
   const courseOptionsObjectives = useMemo(() => {
-    if (!courseForm.program_id) return objectives
+    const chosenProgramId = courseForm.program_id || selectedCrudProgramId
+    if (!chosenProgramId) return objectives
 
     const competencyIds = new Set(
       competencies
-        .filter((competency) => Number(competency.program_id) === Number(courseForm.program_id))
+        .filter((competency) => Number(competency.program_id) === Number(chosenProgramId))
         .map((competency) => competency.id),
     )
 
     return objectives.filter((objective) => competencyIds.has(objective.competency_id))
-  }, [competencies, courseForm.program_id, objectives])
+  }, [competencies, courseForm.program_id, objectives, selectedCrudProgramId])
 
   const quickKpis = useMemo(() => {
-    const orphanObjectives = stats?.objectives_without_courses?.count || 0
-    const bottlenecks = courses.filter((course) => getCourseObjectives(course).length >= 4).length
-    const coherenceErrors = (analytics?.coherence_alerts || []).length
+    const objectivesWithoutCourses = stats?.objectives_without_courses?.count || 0
+    const coursesWithoutObjectives = displayedCourses.filter((course) => getCourseObjectives(course).length === 0).length
 
     return {
-      orphanObjectives,
-      bottlenecks,
-      coherenceErrors,
-      healthScore: Math.max(0, 100 - orphanObjectives * 8 - coherenceErrors * 6),
+      objectivesWithoutCourses,
+      coursesWithoutObjectives,
+      healthScore: Math.max(0, 100 - objectivesWithoutCourses * 8),
     }
-  }, [stats, analytics, courses])
+  }, [displayedCourses, stats])
 
   const coberturaGeneral = report?.executive_summary?.coverage_percentage ?? 0
   const coberturaObjetivos = stats?.objectives_without_courses?.percentage ?? 0
   const coberturaCompetencias = stats?.competencies_without_objectives?.percentage ?? 0
-
-  const distribucionNiveles = useMemo(() => {
-    return (analytics?.domain_progress || []).reduce(
-      (acc, item) => {
-        acc.I += item.counts?.I || 0
-        acc.F += item.counts?.F || 0
-        acc.V += item.counts?.V || 0
-        return acc
-      },
-      { I: 0, F: 0, V: 0 },
-    )
-  }, [analytics])
-
-  const alertasPorSeveridad = useMemo(() => {
-    return (analytics?.coherence_alerts || []).reduce(
-      (acc, alert) => {
-        if (alert.severity === 'high') acc.alta += 1
-        else if (alert.severity === 'medium') acc.media += 1
-        else acc.baja += 1
-        return acc
-      },
-      { alta: 0, media: 0, baja: 0 },
-    )
-  }, [analytics])
+  const objetivosSinCursoCount = stats?.objectives_without_courses?.count ?? 0
+  const objetivosTotalesCount = stats?.objectives_without_courses?.total ?? 0
 
   const loadCatalog = async () => {
     const [programData, competencyData, objectiveData] = await Promise.all([
@@ -129,10 +307,8 @@ function App() {
     setObjectives(objectiveData)
   }
 
-  const loadCourses = async (nextFilters = filters) => {
-    const query = new URLSearchParams(Object.entries(nextFilters).filter(([, value]) => value)).toString()
-    const endpoint = query ? `/courses?${query}` : '/courses'
-    const courseData = await apiRequest(endpoint)
+  const loadCourses = async () => {
+    const courseData = await apiRequest('/courses')
     setCourses(courseData)
   }
 
@@ -148,11 +324,11 @@ function App() {
     setReport(reportData)
   }
 
-  const reloadAll = async (nextFilters = filters) => {
+  const reloadAll = async () => {
     setError('')
     setLoading(true)
     try {
-      await Promise.all([loadCatalog(), loadCourses(nextFilters), loadAnalysis()])
+      await Promise.all([loadCatalog(), loadCourses(), loadAnalysis()])
     } catch (loadError) {
       setError(loadError.message)
     } finally {
@@ -165,11 +341,53 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (!selectedCrudProgramId && programs.length > 0) {
+      setSelectedCrudProgramId(String(programs[0].id))
+    }
+  }, [programs, selectedCrudProgramId])
+
+  useEffect(() => {
+    if (!selectedObjectiveId) return
+    if (!displayedObjectives.some((objective) => objective.id === selectedObjectiveId)) {
+      setSelectedObjectiveId(null)
+    }
+  }, [displayedObjectives, selectedObjectiveId])
+
+  useEffect(() => {
+    document.body.classList.toggle('body-theme-light', theme === 'light')
+    document.body.classList.toggle('body-theme-black', theme === 'black')
+
+    return () => {
+      document.body.classList.remove('body-theme-light', 'body-theme-black')
+    }
+  }, [theme])
+
+  useEffect(() => {
+    return () => {
+      if (undoToastTimerRef.current) {
+        clearTimeout(undoToastTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedCrudProgramId) return
+
+    if (!competencyForm.id && competencyForm.program_id !== selectedCrudProgramId) {
+      setCompetencyForm((current) => ({ ...current, program_id: selectedCrudProgramId }))
+    }
+
+    if (!courseForm.id && courseForm.program_id !== selectedCrudProgramId) {
+      setCourseForm((current) => ({ ...current, program_id: selectedCrudProgramId }))
+    }
+  }, [competencyForm.id, competencyForm.program_id, courseForm.id, courseForm.program_id, selectedCrudProgramId])
+
   const resetProgramForm = () => setProgramForm({ id: null, name: '' })
-  const resetCompetencyForm = () => setCompetencyForm({ id: null, name: '', program_id: '' })
+  const resetCompetencyForm = () => setCompetencyForm({ id: null, name: '', program_id: selectedCrudProgramId || '' })
   const resetObjectiveForm = () => setObjectiveForm({ id: null, description: '', competency_id: '' })
   const resetCourseForm = () => {
-    setCourseForm({ id: null, name: '', program_id: '' })
+    setCourseForm({ id: null, name: '', program_id: selectedCrudProgramId || '' })
     setAssignmentDraft([])
     setAssignmentInput({ objective_id: '', contribution_level: 'I' })
   }
@@ -180,12 +398,59 @@ function App() {
     setError('')
 
     try {
-      const method = programForm.id ? 'PATCH' : 'POST'
-      const path = programForm.id ? `/programs/${programForm.id}` : '/programs'
-      await apiRequest(path, {
+      const isUpdate = Boolean(programForm.id)
+      const previous = isUpdate
+        ? programs.find((item) => Number(item.id) === Number(programForm.id))
+        : null
+
+      const method = isUpdate ? 'PATCH' : 'POST'
+      const path = isUpdate ? `/programs/${programForm.id}` : '/programs'
+      const saved = await apiRequest(path, {
         method,
         body: JSON.stringify({ name: programForm.name }),
       })
+
+      if (isUpdate && previous) {
+        pushHistory({
+          label: `Programa ${saved.name}`,
+          undo: async () => {
+            await apiRequest(`/programs/${saved.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ name: previous.name }),
+            })
+            return {
+              label: `Programa ${saved.name}`,
+              undo: async () => {},
+              redo: async () => {},
+            }
+          },
+          redo: async () => {
+            await apiRequest(`/programs/${saved.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ name: saved.name }),
+            })
+            return null
+          },
+        })
+      }
+
+      if (!isUpdate) {
+        pushHistory({
+          label: `Programa ${saved.name}`,
+          undo: async () => {
+            await apiRequest(`/programs/${saved.id}`, { method: 'DELETE' })
+            return null
+          },
+          redo: async () => {
+            await apiRequest('/programs', {
+              method: 'POST',
+              body: JSON.stringify({ name: saved.name }),
+            })
+            return null
+          },
+        })
+      }
+
       resetProgramForm()
       await reloadAll()
     } catch (saveError) {
@@ -208,7 +473,7 @@ function App() {
         method,
         body: JSON.stringify({
           name: competencyForm.name,
-          program_id: Number(competencyForm.program_id),
+          program_id: Number(competencyForm.program_id || selectedCrudProgramId),
         }),
       })
 
@@ -259,7 +524,7 @@ function App() {
         method,
         body: JSON.stringify({
           name: courseForm.name,
-          program_id: Number(courseForm.program_id),
+          program_id: Number(courseForm.program_id || selectedCrudProgramId),
         }),
       })
 
@@ -282,6 +547,92 @@ function App() {
     }
   }
 
+  const buildProgramSnapshot = async (programId) => {
+    const allCourses = await apiRequest('/courses')
+    const program = programs.find((item) => Number(item.id) === Number(programId))
+    const programCompetencies = competencies.filter((item) => Number(item.program_id) === Number(programId))
+    const competencyIds = new Set(programCompetencies.map((item) => item.id))
+    const programObjectives = objectives.filter((item) => competencyIds.has(item.competency_id))
+    const objectiveIds = new Set(programObjectives.map((item) => item.id))
+    const programCourses = allCourses.filter((item) => Number(item.program_id) === Number(programId))
+
+    return {
+      program,
+      competencies: programCompetencies.map((item) => ({ id: item.id, name: item.name })),
+      objectives: programObjectives.map((item) => ({
+        id: item.id,
+        description: item.description,
+        competency_id: item.competency_id,
+      })),
+      courses: programCourses.map((course) => ({
+        name: course.name,
+        objectives: getCourseObjectives(course)
+          .filter((objective) => objectiveIds.has(objective.id))
+          .map((objective) => ({
+            objective_id: objective.id,
+            contribution_level: objective.pivot?.contribution_level || 'I',
+          })),
+      })),
+    }
+  }
+
+  const restoreProgramSnapshot = async (snapshot) => {
+    const restoredProgram = await apiRequest('/programs', {
+      method: 'POST',
+      body: JSON.stringify({ name: snapshot.program.name }),
+    })
+
+    const competencyIdMap = new Map()
+    for (const competency of snapshot.competencies) {
+      const restoredCompetency = await apiRequest('/competencies', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: competency.name,
+          program_id: Number(restoredProgram.id),
+        }),
+      })
+      competencyIdMap.set(competency.id, restoredCompetency.id)
+    }
+
+    const objectiveIdMap = new Map()
+    for (const objective of snapshot.objectives) {
+      const restoredObjective = await apiRequest('/learning-objectives', {
+        method: 'POST',
+        body: JSON.stringify({
+          description: objective.description,
+          competency_id: Number(competencyIdMap.get(objective.competency_id)),
+        }),
+      })
+      objectiveIdMap.set(objective.id, restoredObjective.id)
+    }
+
+    for (const course of snapshot.courses) {
+      const restoredCourse = await apiRequest('/courses', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: course.name,
+          program_id: Number(restoredProgram.id),
+        }),
+      })
+
+      if (course.objectives.length > 0) {
+        await apiRequest(`/courses/${restoredCourse.id}/objectives`, {
+          method: 'POST',
+          body: JSON.stringify({
+            objective_assignments: course.objectives
+              .map((entry) => ({
+                objective_id: Number(objectiveIdMap.get(entry.objective_id)),
+                contribution_level: entry.contribution_level,
+              }))
+              .filter((entry) => Number.isFinite(entry.objective_id)),
+          }),
+        })
+      }
+    }
+
+    return restoredProgram
+  }
+
   const deleteEntity = async (path, message) => {
     if (!window.confirm(message)) return
 
@@ -289,7 +640,41 @@ function App() {
     setError('')
 
     try {
+      const isProgramDelete = /^\/programs\/\d+$/.test(path)
+      let snapshot = null
+
+      if (isProgramDelete) {
+        const programId = Number(path.split('/').pop())
+        snapshot = await buildProgramSnapshot(programId)
+      }
+
       await apiRequest(path, { method: 'DELETE' })
+
+      if (isProgramDelete && snapshot?.program) {
+        const action = {
+          label: `Se eliminó Programa ${snapshot.program.name}`,
+          undo: async () => {
+            const restoredProgram = await restoreProgramSnapshot(snapshot)
+            return {
+              label: `Se eliminó Programa ${snapshot.program.name}`,
+              undo: async () => {
+                await apiRequest(`/programs/${restoredProgram.id}`, { method: 'DELETE' })
+                return action
+              },
+              redo: async () => {
+                await restoreProgramSnapshot(snapshot)
+                return action
+              },
+            }
+          },
+          redo: async () => {
+            return action
+          },
+        }
+
+        pushHistory(action, true)
+      }
+
       await reloadAll()
     } catch (deleteError) {
       setError(deleteError.message)
@@ -317,7 +702,7 @@ function App() {
     )
 
     if (exists) {
-      setError('El objetivo ya esta asignado en este curso.')
+      setError('El objetivo ya está asignado en este curso.')
       return
     }
 
@@ -331,271 +716,368 @@ function App() {
     )
   }
 
-  const updateFilter = async (key, value) => {
+  const updateFilter = (key, value) => {
     const nextFilters = { ...filters, [key]: value }
+
+    if (key === 'program_id') {
+      nextFilters.course_id = ''
+      nextFilters.competency_id = ''
+      nextFilters.objective_id = ''
+    }
+
+    if (key === 'course_id') {
+      nextFilters.objective_id = ''
+    }
+
+    if (key === 'competency_id') {
+      nextFilters.objective_id = ''
+    }
+
     setFilters(nextFilters)
-    setLoading(true)
+  }
+
+  const resetFilters = () => {
+    setFilters(emptyFilters())
+  }
+
+  const startObjectivesEditing = () => {
+    const drafts = Object.fromEntries(
+      displayedObjectives.map((objective) => [
+        objective.id,
+        {
+          description: objective.description,
+          competency_id: String(objective.competency_id ?? objective.competency?.id ?? ''),
+        },
+      ]),
+    )
+
+    setObjectiveDrafts(drafts)
+    setIsObjectivesEditing(true)
+  }
+
+  const cancelObjectivesEditing = () => {
+    setIsObjectivesEditing(false)
+    setObjectiveDrafts({})
+  }
+
+  const updateObjectiveDraft = (objectiveId, field, value) => {
+    setObjectiveDrafts((current) => ({
+      ...current,
+      [objectiveId]: {
+        ...current[objectiveId],
+        [field]: value,
+      },
+    }))
+  }
+
+  const updateObjectiveRequest = async (objectiveId, payload) => {
+    return apiRequest(`/learning-objectives/${objectiveId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  const saveObjectivesEditing = async () => {
+    const updates = displayedObjectives.filter((objective) => {
+      const draft = objectiveDrafts[objective.id]
+      if (!draft) return false
+
+      return (
+        draft.description !== objective.description ||
+        Number(draft.competency_id) !== Number(objective.competency_id)
+      )
+    })
+
+    setSaving(true)
     setError('')
 
     try {
-      await loadCourses(nextFilters)
-    } catch (filterError) {
-      setError(filterError.message)
+      await Promise.all(
+        updates.map((objective) => {
+          const draft = objectiveDrafts[objective.id]
+          return updateObjectiveRequest(objective.id, {
+            description: draft.description,
+            competency_id: Number(draft.competency_id),
+          })
+        }),
+      )
+
+      setIsObjectivesEditing(false)
+      setObjectiveDrafts({})
+      await reloadAll()
+    } catch (saveError) {
+      setError(saveError.message)
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
-  const resetFilters = async () => {
-    const nextFilters = emptyFilters()
-    setFilters(nextFilters)
-    setLoading(true)
+  const saveNewObjective = async () => {
+    if (!newObjectiveDraft.description || !newObjectiveDraft.competency_id) {
+      setError('Debes completar el nombre del objetivo y la competencia.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
 
     try {
-      await loadCourses(nextFilters)
-    } catch (resetError) {
-      setError(resetError.message)
+      const createdObjective = await apiRequest('/learning-objectives', {
+        method: 'POST',
+        body: JSON.stringify({
+          description: newObjectiveDraft.description,
+          competency_id: Number(newObjectiveDraft.competency_id),
+        }),
+      })
+
+      setHistoryUndo((current) => [
+        ...current.slice(-2),
+        {
+          label: `Se creó objetivo ${createdObjective.id}`,
+          undo: async () => {
+            await apiRequest(`/learning-objectives/${createdObjective.id}`, { method: 'DELETE' })
+            return null
+          },
+          redo: async () => {
+            await apiRequest('/learning-objectives', {
+              method: 'POST',
+              body: JSON.stringify({
+                description: createdObjective.description,
+                competency_id: Number(createdObjective.competency_id),
+              }),
+            })
+            return null
+          },
+        },
+      ])
+      setHistoryRedo([])
+
+      setIsAddingObjective(false)
+      setNewObjectiveDraft({ description: '', competency_id: '' })
+      await reloadAll()
+    } catch (saveError) {
+      setError(saveError.message)
     } finally {
-      setLoading(false)
+      setSaving(false)
+    }
+  }
+
+  const deleteObjectiveWithHistory = async (objective) => {
+    const allCourses = await apiRequest('/courses')
+    const relatedCourses = allCourses
+      .filter((course) => getCourseObjectives(course).some((item) => item.id === objective.id))
+      .map((course) => ({
+        courseId: course.id,
+        assignments: getCourseObjectives(course).map((item) => ({
+          objective_id: item.id,
+          contribution_level: item.pivot?.contribution_level || 'I',
+        })),
+      }))
+
+    const message =
+      relatedCourses.length > 0
+        ? `Este objetivo tiene ${relatedCourses.length} cursos asociados. ¿Seguro que deseas eliminarlo?`
+        : '¿Seguro que deseas eliminar este objetivo?'
+
+    if (!window.confirm(message)) return
+
+    setSaving(true)
+    setError('')
+
+    try {
+      await apiRequest(`/learning-objectives/${objective.id}`, { method: 'DELETE' })
+
+      const action = {
+        label: `Se eliminó objetivo ${objective.id}`,
+        undo: async () => {
+          const restoredObjective = await apiRequest('/learning-objectives', {
+            method: 'POST',
+            body: JSON.stringify({
+              description: objective.description,
+              competency_id: Number(objective.competency_id),
+            }),
+          })
+
+          const restoredObjectiveId = restoredObjective.id
+          await Promise.all(
+            relatedCourses.map((courseEntry) =>
+              apiRequest(`/courses/${courseEntry.courseId}/objectives`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  objective_assignments: courseEntry.assignments.map((assignment) => ({
+                    objective_id:
+                      Number(assignment.objective_id) === Number(objective.id)
+                        ? Number(restoredObjectiveId)
+                        : Number(assignment.objective_id),
+                    contribution_level: assignment.contribution_level,
+                  })),
+                }),
+              }),
+            ),
+          )
+
+          return {
+            label: `Se eliminó objetivo ${objective.id}`,
+            undo: action.undo,
+            redo: async () => {
+              await apiRequest(`/learning-objectives/${restoredObjectiveId}`, { method: 'DELETE' })
+              return action
+            },
+          }
+        },
+        redo: async () => {
+          await apiRequest(`/learning-objectives/${objective.id}`, { method: 'DELETE' })
+          return action
+        },
+      }
+
+      pushHistory(action, true)
+      await reloadAll()
+    } catch (deleteError) {
+      setError(deleteError.message)
+    } finally {
+      setSaving(false)
     }
   }
 
   return (
     <div className={`ss-app theme-${theme}`}>
-      <aside className="ss-sidebar">
-        <div className="ss-brand">
-          <div className="ss-brand-icon">GC</div>
-          <div>
-            <h2>Versión</h2>
-            <small>v4.2.0</small>
-          </div>
-        </div>
-
-        <nav className="ss-nav">
-          <button className={activeView === 'inicio' ? 'ss-nav-item active' : 'ss-nav-item'} onClick={() => setActiveView('inicio')}>
-            Inicio
-          </button>
-          <button className={activeView === 'map' ? 'ss-nav-item active' : 'ss-nav-item'} onClick={() => setActiveView('map')}>
-            Vista detalle
-          </button>
-          <button className={activeView === 'objectives' ? 'ss-nav-item active' : 'ss-nav-item'} onClick={() => setActiveView('objectives')}>
-            Objetivos
-          </button>
-          <button className={activeView === 'crud' ? 'ss-nav-item active' : 'ss-nav-item'} onClick={() => setActiveView('crud')}>
-            Gestión académica
-          </button>
-        </nav>
-
-        <div className="ss-sidebar-footer">
-          <button className="ss-btn ss-btn-primary" onClick={() => reloadAll()} disabled={loading || saving}>
-            Actualizar datos
-          </button>
-        </div>
-      </aside>
-
       <section className="ss-shell">
-        <header className="ss-topbar">
-          <div>
-            <p className="ss-overline">Icesi Virtual</p>
-            <h1>Gestión curricular</h1>
-          </div>
-          <div className="ss-topbar-actions">
-            <div className="ss-theme-switch" role="group" aria-label="Selector de tema">
-              <button
-                className={theme === 'light' ? 'ss-theme-btn active' : 'ss-theme-btn'}
-                onClick={() => setTheme('light')}
-                type="button"
-              >
-                Light
+        <header className="ss-topbar ss-topbar-sticky">
+          <div className="ss-topbar-main">
+            <div>
+              <p className="ss-overline">Icesi Virtual</p>
+              <h1>Gestión curricular</h1>
+            </div>
+            <div className="ss-topbar-actions">
+              <button className={activeView === 'inicio' ? 'ss-btn ss-btn-primary' : 'ss-btn ss-btn-ghost'} onClick={() => setActiveView('inicio')}>
+                Inicio
               </button>
-              <button
-                className={theme === 'black' ? 'ss-theme-btn active' : 'ss-theme-btn'}
-                onClick={() => setTheme('black')}
-                type="button"
-              >
-                Dark
+              <button className={activeView === 'crud' ? 'ss-btn ss-btn-primary' : 'ss-btn ss-btn-ghost'} onClick={() => setActiveView('crud')}>
+                Configuración
+              </button>
+              {activeView === 'inicio' && (
+                <button className="ss-btn ss-btn-ghost" onClick={resetFilters}>
+                  Limpiar filtros
+                </button>
+              )}
+              <button className="ss-btn ss-btn-primary" onClick={() => reloadAll()} disabled={loading || saving}>
+                Actualizar datos
               </button>
             </div>
-            <div className="ss-health-box">
-              <span>Estado general</span>
-              <strong>Índice de salud: {quickKpis.healthScore}%</strong>
-            </div>
           </div>
+
+          {activeView === 'inicio' && (
+            <div className="ss-topbar-filters ss-filters">
+              <label>
+                Programa
+                <select value={filters.program_id} onChange={(event) => updateFilter('program_id', event.target.value)}>
+                  <option value="">Todos</option>
+                  {programs.map((program) => (
+                    <option key={program.id} value={program.id}>{program.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Curso
+                <select value={filters.course_id} onChange={(event) => updateFilter('course_id', event.target.value)}>
+                  <option value="">Todos</option>
+                  {availableCoursesForFilters.map((course) => (
+                    <option key={course.id} value={course.id}>{course.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Competencia
+                <select value={filters.competency_id} onChange={(event) => updateFilter('competency_id', event.target.value)}>
+                  <option value="">Todas</option>
+                  {availableCompetenciesForFilters.map((competency) => (
+                    <option key={competency.id} value={competency.id}>{competency.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Objetivo
+                <select value={filters.objective_id} onChange={(event) => updateFilter('objective_id', event.target.value)}>
+                  <option value="">Todos</option>
+                  {availableObjectivesForFilters.map((objective) => (
+                    <option key={objective.id} value={objective.id}>{objective.description.slice(0, 72)}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Nivel
+                <select value={filters.contribution_level} onChange={(event) => updateFilter('contribution_level', event.target.value)}>
+                  <option value="">Todos</option>
+                  {LEVELS.map((level) => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
         </header>
 
-        <div className={activeView === 'inicio' ? 'ss-body' : 'ss-body ss-body-single'}>
+        <div className="ss-body ss-body-single">
           <main className="ss-content">
             {error && <div className="ss-alert ss-alert-error">{error}</div>}
 
             {activeView === 'inicio' && (
-              <section className="ss-inicio-grid">
-                <article className="ss-card">
-                  <h3>Panel de métricas y calidad</h3>
-                  <div className="ss-donut-grid">
-                    <div className="ss-donut-card">
-                      <div className="ss-donut" style={{ '--valor': `${coberturaGeneral}%` }}>
-                        <span>{coberturaGeneral}%</span>
-                      </div>
-                      <p>Cobertura curricular total</p>
-                    </div>
-                    <div className="ss-donut-card">
-                      <div className="ss-donut ss-donut-warning" style={{ '--valor': `${Math.min(100, coberturaObjetivos)}%` }}>
-                        <span>{coberturaObjetivos}%</span>
-                      </div>
-                      <p>Objetivos sin cursos</p>
-                    </div>
-                    <div className="ss-donut-card">
-                      <div className="ss-donut ss-donut-danger" style={{ '--valor': `${Math.min(100, coberturaCompetencias)}%` }}>
-                        <span>{coberturaCompetencias}%</span>
-                      </div>
-                      <p>Competencias sin objetivos</p>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="ss-card">
-                  <h3>Distribución de niveles I/F/V</h3>
-                  <div className="ss-bars">
-                    <div className="ss-bar-row">
-                      <div className="ss-bar-head">
-                        <span>Total consolidado</span>
-                        <span>{distribucionNiveles.I + distribucionNiveles.F + distribucionNiveles.V} relaciones</span>
-                      </div>
-                      <div className="ss-bar-stack" role="img" aria-label="Distribución de niveles I F V">
-                        <div className="ss-bar i" style={{ flexGrow: Math.max(distribucionNiveles.I, 0.4) }}>I {distribucionNiveles.I}</div>
-                        <div className="ss-bar f" style={{ flexGrow: Math.max(distribucionNiveles.F, 0.4) }}>F {distribucionNiveles.F}</div>
-                        <div className="ss-bar v" style={{ flexGrow: Math.max(distribucionNiveles.V, 0.4) }}>V {distribucionNiveles.V}</div>
-                      </div>
-                    </div>
-
-                    {(analytics?.domain_progress || []).slice(0, 5).map((item) => (
-                      <div key={item.competency_id} className="ss-bar-row">
-                        <div className="ss-bar-head">
-                          <span>{item.name}</span>
-                          <span>{item.saturation_percentage}%</span>
-                        </div>
-                        <div className="ss-bar-stack" role="img" aria-label={`Niveles para ${item.name}`}>
-                          <div className="ss-bar i" style={{ flexGrow: Math.max(item.counts.I, 0.4) }}>I {item.counts.I}</div>
-                          <div className="ss-bar f" style={{ flexGrow: Math.max(item.counts.F, 0.4) }}>F {item.counts.F}</div>
-                          <div className="ss-bar v" style={{ flexGrow: Math.max(item.counts.V, 0.4) }}>V {item.counts.V}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-
-                <article className="ss-card">
-                  <h3>Alertas por severidad</h3>
-                  <div className="ss-mini-bars">
-                    <div className="ss-mini-row">
-                      <span>Alta</span>
-                      <div className="ss-mini-track">
-                        <div className="ss-mini-fill high" style={{ width: `${Math.min(100, alertasPorSeveridad.alta * 25)}%` }} />
-                      </div>
-                      <strong>{alertasPorSeveridad.alta}</strong>
-                    </div>
-                    <div className="ss-mini-row">
-                      <span>Media</span>
-                      <div className="ss-mini-track">
-                        <div className="ss-mini-fill medium" style={{ width: `${Math.min(100, alertasPorSeveridad.media * 25)}%` }} />
-                      </div>
-                      <strong>{alertasPorSeveridad.media}</strong>
-                    </div>
-                    <div className="ss-mini-row">
-                      <span>Baja</span>
-                      <div className="ss-mini-track">
-                        <div className="ss-mini-fill low" style={{ width: `${Math.min(100, alertasPorSeveridad.baja * 25)}%` }} />
-                      </div>
-                      <strong>{alertasPorSeveridad.baja}</strong>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="ss-card">
-                  <h3>Recomendaciones priorizadas</h3>
-                  <div className="ss-priority-list">
-                    {(report?.recommendations || []).slice(0, 4).map((recommendation, index) => (
-                      <div key={recommendation.title} className="ss-priority-item">
-                        <div className="ss-priority-head">
-                          <strong>{recommendation.title}</strong>
-                          <span>Prioridad {index + 1}</span>
-                        </div>
-                        <div className="ss-mini-track">
-                          <div className="ss-mini-fill i" style={{ width: `${100 - index * 15}%` }} />
-                        </div>
-                        <p>{recommendation.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              </section>
-            )}
-
-            {activeView === 'map' && (
               <>
-                <section className="ss-kpi-row">
-                  <article className="ss-kpi-card">
-                    <label>Huérfanos</label>
-                    <strong>{quickKpis.orphanObjectives}</strong>
-                  </article>
-                  <article className="ss-kpi-card">
-                    <label>Cuellos de botella</label>
-                    <strong>{quickKpis.bottlenecks}</strong>
-                  </article>
-                  <article className="ss-kpi-card">
-                    <label>Errores de coherencia</label>
-                    <strong>{quickKpis.coherenceErrors}</strong>
+                <section className="ss-inicio-grid">
+                  <article className="ss-card">
+                    <h3>Panel de métricas y calidad</h3>
+                    <div className="ss-donut-grid">
+                      <div className="ss-donut-card">
+                        <div className="ss-donut" style={{ '--valor': `${coberturaGeneral}%` }}>
+                          <span>{coberturaGeneral}%</span>
+                        </div>
+                        <p>Cobertura curricular total</p>
+                      </div>
+                      <div className="ss-donut-card">
+                        <div className="ss-donut ss-donut-warning" style={{ '--valor': `${Math.min(100, coberturaObjetivos)}%` }}>
+                          <span>{coberturaObjetivos}%</span>
+                        </div>
+                        <p>Objetivos sin cursos</p>
+                        <small className="ss-donut-meta">
+                          {objetivosSinCursoCount} / {objetivosTotalesCount}
+                        </small>
+                      </div>
+                      <div className="ss-donut-card">
+                        <div className="ss-donut ss-donut-danger" style={{ '--valor': `${Math.min(100, coberturaCompetencias)}%` }}>
+                          <span>{coberturaCompetencias}%</span>
+                        </div>
+                        <p>Competencias sin objetivos</p>
+                      </div>
+                    </div>
                   </article>
                 </section>
 
-                <section className="ss-card">
-                  <div className="ss-card-header">
-                    <h3>Navegación inteligente</h3>
-                    <button className="ss-btn ss-btn-ghost" onClick={resetFilters} disabled={loading}>
-                      Limpiar filtros
-                    </button>
-                  </div>
-                  <div className="ss-filters">
-                    <label>
-                      Programa
-                      <select value={filters.program_id} onChange={(event) => updateFilter('program_id', event.target.value)}>
-                        <option value="">Todos</option>
-                        {programs.map((program) => (
-                          <option key={program.id} value={program.id}>{program.name}</option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      Competencia
-                      <select value={filters.competency_id} onChange={(event) => updateFilter('competency_id', event.target.value)}>
-                        <option value="">Todas</option>
-                        {competencies.map((competency) => (
-                          <option key={competency.id} value={competency.id}>{competency.name}</option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      Objetivo
-                      <select value={filters.objective_id} onChange={(event) => updateFilter('objective_id', event.target.value)}>
-                        <option value="">Todos</option>
-                        {objectives.map((objective) => (
-                          <option key={objective.id} value={objective.id}>{objective.description.slice(0, 72)}</option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      Nivel
-                      <select value={filters.contribution_level} onChange={(event) => updateFilter('contribution_level', event.target.value)}>
-                        <option value="">Todos</option>
-                        {LEVELS.map((level) => (
-                          <option key={level} value={level}>{level}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                <section className="ss-kpi-row">
+                  <article className="ss-kpi-card">
+                    <label>Total de cursos del programa</label>
+                    <strong>{displayedCourses.length}</strong>
+                    <small>{filters.program_id ? programs.find((program) => String(program.id) === String(filters.program_id))?.name || 'Programa activo' : 'Todos los programas'}</small>
+                  </article>
+                  <article className="ss-kpi-card">
+                    <label>Total de competencias</label>
+                    <strong>{filters.program_id ? availableCompetenciesForFilters.length : competencies.length}</strong>
+                    <small>{filters.program_id ? 'Competencias del programa' : 'Todas las competencias'}</small>
+                  </article>
+                  <article className="ss-kpi-card">
+                    <label>Huérfanos</label>
+                    <strong>{quickKpis.coursesWithoutObjectives}</strong>
+                    <small>Cursos sin objetivos</small>
+                  </article>
+                  <article className="ss-kpi-card">
+                    <label>Salud académica</label>
+                    <strong>{analytics?.coverage_health?.overall_score ?? quickKpis.healthScore}</strong>
+                    <small>Índice compuesto</small>
+                  </article>
                 </section>
 
                 <section className="ss-card">
@@ -612,14 +1094,12 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {courses.map((course) => {
+                        {displayedCourses.map((course) => {
                           const courseObjectives = getCourseObjectives(course)
 
                           return (
                             <tr key={course.id}>
-                              <td>
-                                <strong>{course.name}</strong>
-                              </td>
+                              <td><strong>{course.name}</strong></td>
                               <td>{course.program?.name || 'Sin programa'}</td>
                               <td>
                                 <div className="ss-token-list">
@@ -644,10 +1124,7 @@ function App() {
                               <td>
                                 <div className="ss-actions">
                                   <button className="ss-btn ss-btn-ghost" onClick={() => startCourseEdit(course)}>Editar</button>
-                                  <button
-                                    className="ss-btn ss-btn-danger"
-                                    onClick={() => deleteEntity(`/courses/${course.id}`, 'Eliminar este curso quitara sus asignaciones. Deseas continuar?')}
-                                  >
+                                  <button className="ss-btn ss-btn-danger" onClick={() => deleteEntity(`/courses/${course.id}`, 'Eliminar este curso quitará sus asignaciones. ¿Deseas continuar?')}>
                                     Eliminar
                                   </button>
                                 </div>
@@ -656,7 +1133,7 @@ function App() {
                           )
                         })}
 
-                        {courses.length === 0 && (
+                        {displayedCourses.length === 0 && (
                           <tr>
                             <td colSpan="5" className="ss-empty-row">No hay cursos para los filtros seleccionados.</td>
                           </tr>
@@ -665,51 +1142,193 @@ function App() {
                     </table>
                   </div>
                 </section>
-              </>
-            )}
 
-            {activeView === 'objectives' && (
-              <section className="ss-card">
-                <h3>Gestor de objetivos</h3>
-                <div className="ss-table-wrap">
-                  <table className="ss-table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Objetivo</th>
-                        <th>Competencia</th>
-                        <th>Cursos</th>
-                        <th>Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {objectives.map((objective) => {
-                        const linkedCourses = courses.filter((course) =>
-                          getCourseObjectives(course).some((item) => item.id === objective.id),
-                        )
+                <section className="ss-card">
+                  <div className="ss-card-header ss-objectives-header">
+                    <h3>Gestor de objetivos</h3>
+                    <div className="ss-actions">
+                      {isObjectivesEditing && (
+                        <>
+                          <button className="ss-btn ss-btn-save" onClick={saveObjectivesEditing} disabled={saving}>Guardar</button>
+                          <button className="ss-btn ss-btn-cancel" onClick={cancelObjectivesEditing} disabled={saving}>Cancelar</button>
+                        </>
+                      )}
+                      {isAddingObjective && (
+                        <>
+                          <button className="ss-btn ss-btn-primary" onClick={saveNewObjective} disabled={saving}>Guardar nuevo</button>
+                          <button className="ss-btn ss-btn-ghost" onClick={() => {
+                            setIsAddingObjective(false)
+                            setNewObjectiveDraft({ description: '', competency_id: '' })
+                          }} disabled={saving}>Cancelar</button>
+                        </>
+                      )}
+                      <button className="ss-btn ss-btn-ghost" onClick={isObjectivesEditing ? cancelObjectivesEditing : startObjectivesEditing} disabled={saving}>
+                        {isObjectivesEditing ? 'Editando' : 'Editar'}
+                      </button>
+                      <button className="ss-btn ss-btn-primary" onClick={() => setIsAddingObjective((current) => !current)} disabled={saving}>
+                        + Añadir objetivo
+                      </button>
+                      <button
+                        className="ss-btn ss-btn-danger"
+                        onClick={() => {
+                          const objective = displayedObjectives.find((item) => item.id === selectedObjectiveId)
+                          if (objective) {
+                            deleteObjectiveWithHistory(cloneObjective(objective))
+                            setSelectedObjectiveId(null)
+                          }
+                        }}
+                        disabled={saving || !selectedObjectiveId}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
 
-                        return (
-                          <tr key={objective.id}>
-                            <td>OBJ-{objective.id}</td>
-                            <td>{objective.description}</td>
-                            <td>{objective.competency?.name || 'Sin competencia'}</td>
-                            <td>{linkedCourses.length}</td>
+                  <div className="ss-kpi-row">
+                    <article className="ss-kpi-card">
+                      <label>Objetivos sin cursos</label>
+                      <strong>{coberturaObjetivos}%</strong>
+                      <small>{objetivosSinCursoCount} / {objetivosTotalesCount}</small>
+                    </article>
+                  </div>
+
+                  <div className="ss-table-wrap">
+                    <table className="ss-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Objetivo</th>
+                          <th>Competencia</th>
+                          <th>Cursos</th>
+                          <th>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {isAddingObjective && (
+                          <tr>
+                            <td>Nuevo</td>
                             <td>
-                              <span className={linkedCourses.length > 0 ? 'ss-badge ok' : 'ss-badge danger'}>
-                                {linkedCourses.length > 0 ? 'Cubierto' : 'No cubierto'}
-                              </span>
+                              <input
+                                value={newObjectiveDraft.description}
+                                onChange={(event) => setNewObjectiveDraft((current) => ({ ...current, description: event.target.value }))}
+                                placeholder="Nombre del objetivo"
+                              />
                             </td>
+                            <td>
+                              <select
+                                value={newObjectiveDraft.competency_id}
+                                onChange={(event) => setNewObjectiveDraft((current) => ({ ...current, competency_id: event.target.value }))}
+                              >
+                                <option value="">Competencia</option>
+                                {crudCompetencies.map((competency) => (
+                                  <option key={competency.id} value={competency.id}>{competency.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>-</td>
+                            <td><span className="ss-badge">Borrador</span></td>
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+                        )}
+
+                        {displayedObjectives.map((objective) => {
+                          const linkedCourses = displayedCourses.filter((course) =>
+                            getCourseObjectives(course).some((item) => item.id === objective.id),
+                          )
+
+                          return (
+                            <tr
+                              key={objective.id}
+                              className={selectedObjectiveId === objective.id ? 'ss-row-selected' : ''}
+                              onClick={() => setSelectedObjectiveId(objective.id)}
+                            >
+                              <td>OBJ-{objective.id}</td>
+                              <td>
+                                {isObjectivesEditing ? (
+                                  <input
+                                    value={objectiveDrafts[objective.id]?.description ?? objective.description}
+                                    onChange={(event) => updateObjectiveDraft(objective.id, 'description', event.target.value)}
+                                  />
+                                ) : (
+                                  objective.description
+                                )}
+                              </td>
+                              <td>
+                                {isObjectivesEditing ? (
+                                  <select
+                                    value={objectiveDrafts[objective.id]?.competency_id ?? String(objective.competency_id ?? objective.competency?.id ?? '')}
+                                    onChange={(event) => updateObjectiveDraft(objective.id, 'competency_id', event.target.value)}
+                                  >
+                                    <option value="">Competencia</option>
+                                    {crudCompetencies.map((competency) => (
+                                      <option key={competency.id} value={competency.id}>{competency.name}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  objective.competency?.name || 'Sin competencia'
+                                )}
+                              </td>
+                              <td>{linkedCourses.length}</td>
+                              <td>
+                                <span className={linkedCourses.length > 0 ? 'ss-badge ok' : 'ss-badge danger'}>
+                                  {linkedCourses.length > 0 ? 'Cubierto' : 'No cubierto'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </>
             )}
 
             {activeView === 'crud' && (
               <section className="ss-crud-grid">
+                <article className="ss-card ss-span-two">
+                  <div className="ss-card-header">
+                    <h3>Controles de configuración</h3>
+                    <div className="ss-actions">
+                      <button className="ss-btn ss-btn-ghost" onClick={executeUndo} disabled={saving || historyUndo.length === 0}>Deshacer</button>
+                      <button className="ss-btn ss-btn-ghost" onClick={executeRedo} disabled={saving || historyRedo.length === 0}>Rehacer</button>
+                    </div>
+                  </div>
+                  <div className="ss-theme-switch" role="group" aria-label="Selector de tema">
+                    <button className={theme === 'light' ? 'ss-theme-btn active' : 'ss-theme-btn'} onClick={() => setTheme('light')} type="button">Claro</button>
+                    <button className={theme === 'black' ? 'ss-theme-btn active' : 'ss-theme-btn'} onClick={() => setTheme('black')} type="button">Negro</button>
+                  </div>
+                </article>
+
+                <article className="ss-card ss-span-two">
+                  <div className="ss-card-header">
+                    <h3>Selector de programa</h3>
+                    <button className="ss-btn ss-btn-ghost" type="button" onClick={() => setSelectedCrudProgramId('')}>Ver todo</button>
+                  </div>
+                  <div className="ss-filters ss-crud-selector">
+                    <label>
+                      Programa
+                      <select value={selectedCrudProgramId} onChange={(event) => setSelectedCrudProgramId(event.target.value)}>
+                        <option value="">Todos los programas</option>
+                        {programs.map((program) => (
+                          <option key={program.id} value={program.id}>{program.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Cursos visibles
+                      <input value={crudCourses.length} readOnly />
+                    </label>
+                    <label>
+                      Competencias visibles
+                      <input value={crudCompetencies.length} readOnly />
+                    </label>
+                    <label>
+                      Objetivos visibles
+                      <input value={crudObjectives.length} readOnly />
+                    </label>
+                  </div>
+                </article>
+
                 <article className="ss-card">
                   <h3>Programas</h3>
                   <form onSubmit={saveProgram} className="ss-form">
@@ -728,7 +1347,7 @@ function App() {
                         </div>
                         <div className="ss-actions">
                           <button className="ss-btn ss-btn-ghost" onClick={() => setProgramForm({ id: program.id, name: program.name })}>Editar</button>
-                          <button className="ss-btn ss-btn-danger" onClick={() => deleteEntity(`/programs/${program.id}`, 'Eliminar programa?')}>Eliminar</button>
+                          <button className="ss-btn ss-btn-danger" onClick={() => deleteEntity(`/programs/${program.id}`, 'Eliminar este programa puede borrar cursos y competencias asociadas. ¿Deseas continuar?')}>Eliminar</button>
                         </div>
                       </li>
                     ))}
@@ -739,7 +1358,7 @@ function App() {
                   <h3>Competencias</h3>
                   <form onSubmit={saveCompetency} className="ss-form">
                     <input value={competencyForm.name} onChange={(event) => setCompetencyForm({ ...competencyForm, name: event.target.value })} placeholder="Nombre de la competencia" required />
-                    <select value={competencyForm.program_id} onChange={(event) => setCompetencyForm({ ...competencyForm, program_id: event.target.value })} required>
+                    <select value={competencyForm.program_id || selectedCrudProgramId || ''} onChange={(event) => setCompetencyForm({ ...competencyForm, program_id: event.target.value })} required>
                       <option value="">Programa</option>
                       {programs.map((program) => (
                         <option key={program.id} value={program.id}>{program.name}</option>
@@ -751,7 +1370,7 @@ function App() {
                     </div>
                   </form>
                   <ul className="ss-list">
-                    {competencies.map((competency) => (
+                    {crudCompetencies.map((competency) => (
                       <li key={competency.id}>
                         <div>
                           <strong>{competency.name}</strong>
@@ -769,10 +1388,10 @@ function App() {
                 <article className="ss-card">
                   <h3>Objetivos</h3>
                   <form onSubmit={saveObjective} className="ss-form">
-                    <textarea value={objectiveForm.description} onChange={(event) => setObjectiveForm({ ...objectiveForm, description: event.target.value })} placeholder="Descripcion del objetivo" required />
+                    <textarea value={objectiveForm.description} onChange={(event) => setObjectiveForm({ ...objectiveForm, description: event.target.value })} placeholder="Descripción del objetivo" required />
                     <select value={objectiveForm.competency_id} onChange={(event) => setObjectiveForm({ ...objectiveForm, competency_id: event.target.value })} required>
                       <option value="">Competencia</option>
-                      {competencies.map((competency) => (
+                      {crudCompetencies.map((competency) => (
                         <option key={competency.id} value={competency.id}>{competency.name}</option>
                       ))}
                     </select>
@@ -782,7 +1401,7 @@ function App() {
                     </div>
                   </form>
                   <ul className="ss-list">
-                    {objectives.map((objective) => (
+                    {crudObjectives.map((objective) => (
                       <li key={objective.id}>
                         <div>
                           <strong>{objective.description.slice(0, 90)}</strong>
@@ -790,7 +1409,7 @@ function App() {
                         </div>
                         <div className="ss-actions">
                           <button className="ss-btn ss-btn-ghost" onClick={() => setObjectiveForm({ id: objective.id, description: objective.description, competency_id: String(objective.competency_id) })}>Editar</button>
-                          <button className="ss-btn ss-btn-danger" onClick={() => deleteEntity(`/learning-objectives/${objective.id}`, 'Eliminar objetivo?')}>Eliminar</button>
+                          <button className="ss-btn ss-btn-danger" onClick={() => deleteObjectiveWithHistory(cloneObjective(objective))}>Eliminar</button>
                         </div>
                       </li>
                     ))}
@@ -802,7 +1421,7 @@ function App() {
                   <form onSubmit={saveCourse} className="ss-form">
                     <div className="ss-grid-two">
                       <input value={courseForm.name} onChange={(event) => setCourseForm({ ...courseForm, name: event.target.value })} placeholder="Nombre del curso" required />
-                      <select value={courseForm.program_id} onChange={(event) => setCourseForm({ ...courseForm, program_id: event.target.value })} required>
+                      <select value={courseForm.program_id || selectedCrudProgramId || ''} onChange={(event) => setCourseForm({ ...courseForm, program_id: event.target.value })} required>
                         <option value="">Programa</option>
                         {programs.map((program) => (
                           <option key={program.id} value={program.id}>{program.name}</option>
@@ -830,6 +1449,7 @@ function App() {
                     <div className="ss-token-list compact">
                       {assignmentDraft.map((entry) => {
                         const objectiveName = objectives.find((objective) => objective.id === Number(entry.objective_id))?.description || `Objetivo ${entry.objective_id}`
+
                         return (
                           <span key={`draft-${entry.objective_id}`} className="ss-token">
                             <small>{objectiveName}</small>
@@ -849,30 +1469,14 @@ function App() {
               </section>
             )}
           </main>
-
-          {activeView === 'inicio' && (
-            <aside className="ss-right">
-              <div className="ss-card">
-                <h3>Cobertura KPI</h3>
-                <div className="ss-donut-grid ss-donut-grid-side">
-                  <div className="ss-donut-card">
-                    <div className="ss-donut" style={{ '--valor': `${coberturaGeneral}%` }}>
-                      <span>{coberturaGeneral}%</span>
-                    </div>
-                    <p>Cobertura total</p>
-                  </div>
-                  <div className="ss-donut-card">
-                    <div className="ss-donut ss-donut-warning" style={{ '--valor': `${Math.min(100, coberturaObjetivos)}%` }}>
-                      <span>{coberturaObjetivos}%</span>
-                    </div>
-                    <p>Objetivos sin cursos</p>
-                  </div>
-                </div>
-                <button className="ss-btn ss-btn-primary" onClick={() => setActiveView('crud')}>Ir a gestión académica</button>
-              </div>
-            </aside>
-          )}
         </div>
+
+        {undoToast && (
+          <div className="ss-undo-toast" role="status" aria-live="polite">
+            <p>{undoToast.label}</p>
+            <button className="ss-btn ss-btn-save" onClick={executeUndo} disabled={saving || historyUndo.length === 0}>Deshacer</button>
+          </div>
+        )}
       </section>
     </div>
   )
