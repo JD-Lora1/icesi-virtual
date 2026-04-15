@@ -39,12 +39,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: >
-      sh -c "if [ -f artisan ]; then
-      composer install && php artisan serve --host=0.0.0.0 --port=8000;
-      else
-      echo 'Laravel project not initialized in /backend. See README.' && tail -f /dev/null;
-      fi"
+    command: sh -c "composer install && php artisan serve --host=0.0.0.0 --port=8000"
 
   frontend:
     build:

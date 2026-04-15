@@ -20,39 +20,30 @@ if errorlevel 1 (
 )
 
 echo [1/6] Levantando servicios base...
-docker compose up -d --build postgres backend
+docker compose up -d --build postgres backend frontend
 if errorlevel 1 (
-  echo [ERROR] No se pudieron iniciar postgres/backend.
+  echo [ERROR] No se pudieron iniciar los servicios Docker.
   exit /b 1
 )
 
-echo [2/6] Instalando dependencias backend si Laravel ya existe...
-if exist "backend\artisan" (
-  docker compose run --rm backend composer install
-  if errorlevel 1 (
-    echo [ERROR] Fallo composer install.
-    exit /b 1
-  )
-) else (
-  echo [WARN] No se encontro backend\artisan.
-  echo [WARN] El backend queda como estructura base. Inicializa Laravel completo para ejecutar artisan.
+echo [2/6] Instalando dependencias PHP del backend...
+docker compose exec backend composer install
+if errorlevel 1 (
+  echo [ERROR] Fallo composer install.
+  exit /b 1
 )
 
 echo [3/6] Preparando .env backend...
-if not exist "backend\.env" copy "backend\.env.example" "backend\.env" >nul
+copy /Y "backend\.env.example" "backend\.env" >nul
 
 echo [4/6] Aplicando key/migraciones/seed si artisan existe...
-if exist "backend\artisan" (
-  docker compose run --rm backend php artisan key:generate --force
-  docker compose run --rm backend php artisan migrate --seed --force
-) else (
-  echo [WARN] Se omiten migraciones/seed porque Laravel no esta inicializado.
-)
+docker compose exec backend php artisan key:generate --force
+docker compose exec backend php artisan migrate --seed --force
 
 echo [5/6] Levantando frontend...
-docker compose up -d --build frontend
+docker compose exec frontend npm install
 if errorlevel 1 (
-  echo [ERROR] No se pudo iniciar frontend.
+  echo [ERROR] Fallo npm install en frontend.
   exit /b 1
 )
 

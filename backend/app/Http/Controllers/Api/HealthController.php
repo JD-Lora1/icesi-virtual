@@ -1,12 +1,13 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 
 class HealthController extends Controller
 {
-    public function index(): JsonResponse
+    public function __invoke(): JsonResponse
     {
         return response()->json([
             'status' => 'ok',
