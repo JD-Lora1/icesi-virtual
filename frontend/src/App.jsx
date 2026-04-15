@@ -98,7 +98,6 @@ function App() {
   const undoToastTimerRef = useRef(null)
 
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const pushHistory = (action, showToast = false) => {
@@ -493,13 +492,10 @@ function App() {
 
   const reloadAll = async () => {
     setError('')
-    setLoading(true)
     try {
       await Promise.all([loadCatalog(), loadCourses()])
     } catch (loadError) {
       setError(loadError.message)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -850,17 +846,6 @@ function App() {
     }
   }
 
-  const startCourseEdit = (course) => {
-    setCourseForm({ id: course.id, name: course.name, program_id: String(course.program_id) })
-    setAssignmentDraft(
-      getCourseObjectives(course).map((item) => ({
-        objective_id: item.id,
-        contribution_level: item.pivot?.contribution_level || 'I',
-      })),
-    )
-    setActiveView('crud')
-  }
-
   const addAssignment = () => {
     if (!assignmentInput.objective_id) return
 
@@ -1114,79 +1099,88 @@ function App() {
           <div className="ss-topbar-main">
             <div>
               <p className="ss-overline">Icesi Virtual</p>
-              <h1>Gestión curricular</h1>
+              <button className="ss-home-link" onClick={() => setActiveView('inicio')}>
+                Gestión curricular
+              </button>
             </div>
             <div className="ss-topbar-actions">
-              <button className={activeView === 'inicio' ? 'ss-btn ss-btn-primary' : 'ss-btn ss-btn-ghost'} onClick={() => setActiveView('inicio')}>
-                Inicio
-              </button>
               <button className={activeView === 'crud' ? 'ss-btn ss-btn-primary' : 'ss-btn ss-btn-ghost'} onClick={() => setActiveView('crud')}>
                 Configuración
-              </button>
-              {activeView === 'inicio' && (
-                <button className="ss-btn ss-btn-ghost" onClick={resetFilters}>
-                  Limpiar filtros
-                </button>
-              )}
-              <button className="ss-btn ss-btn-primary" onClick={() => reloadAll()} disabled={loading || saving}>
-                Actualizar datos
               </button>
             </div>
           </div>
 
-          {activeView === 'inicio' && (
-            <div className="ss-topbar-filters ss-filters">
-              <label>
-                Programa
-                <select value={filters.program_id} onChange={(event) => updateFilter('program_id', event.target.value)}>
-                  <option value="">Todos</option>
-                  {programs.map((program) => (
-                    <option key={program.id} value={program.id}>{program.name}</option>
-                  ))}
-                </select>
-              </label>
+          <div className="ss-topbar-filters">
+            {activeView === 'inicio' ? (
+              <div className="ss-topbar-filter-row">
+                <div className="ss-filters">
+                  <label>
+                    Programa
+                    <select value={filters.program_id} onChange={(event) => updateFilter('program_id', event.target.value)}>
+                      <option value="">Todos</option>
+                      {programs.map((program) => (
+                        <option key={program.id} value={program.id}>{program.name}</option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label>
-                Curso
-                <select value={filters.course_id} onChange={(event) => updateFilter('course_id', event.target.value)}>
-                  <option value="">Todos</option>
-                  {availableCoursesForFilters.map((course) => (
-                    <option key={course.id} value={course.id}>{course.name}</option>
-                  ))}
-                </select>
-              </label>
+                  <label>
+                    Curso
+                    <select value={filters.course_id} onChange={(event) => updateFilter('course_id', event.target.value)}>
+                      <option value="">Todos</option>
+                      {availableCoursesForFilters.map((course) => (
+                        <option key={course.id} value={course.id}>{course.name}</option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label>
-                Competencia
-                <select value={filters.competency_id} onChange={(event) => updateFilter('competency_id', event.target.value)}>
-                  <option value="">Todas</option>
-                  {availableCompetenciesForFilters.map((competency) => (
-                    <option key={competency.id} value={competency.id}>{competency.name}</option>
-                  ))}
-                </select>
-              </label>
+                  <label>
+                    Competencia
+                    <select value={filters.competency_id} onChange={(event) => updateFilter('competency_id', event.target.value)}>
+                      <option value="">Todas</option>
+                      {availableCompetenciesForFilters.map((competency) => (
+                        <option key={competency.id} value={competency.id}>{competency.name}</option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label>
-                Objetivo
-                <select value={filters.objective_id} onChange={(event) => updateFilter('objective_id', event.target.value)}>
-                  <option value="">Todos</option>
-                  {availableObjectivesForFilters.map((objective) => (
-                    <option key={objective.id} value={objective.id}>{objective.description.slice(0, 72)}</option>
-                  ))}
-                </select>
-              </label>
+                  <label>
+                    Objetivo
+                    <select value={filters.objective_id} onChange={(event) => updateFilter('objective_id', event.target.value)}>
+                      <option value="">Todos</option>
+                      {availableObjectivesForFilters.map((objective) => (
+                        <option key={objective.id} value={objective.id}>{objective.description.slice(0, 72)}</option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label>
-                Nivel
-                <select value={filters.contribution_level} onChange={(event) => updateFilter('contribution_level', event.target.value)}>
-                  <option value="">Todos</option>
-                  {LEVELS.map((level) => (
-                    <option key={level} value={level}>{level}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
+                  <label>
+                    Nivel
+                    <select value={filters.contribution_level} onChange={(event) => updateFilter('contribution_level', event.target.value)}>
+                      <option value="">Todos</option>
+                      {LEVELS.map((level) => (
+                        <option key={level} value={level}>{level}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="ss-topbar-secondary-actions">
+                  <button className="ss-btn ss-btn-ghost" onClick={resetFilters}>
+                    Limpiar filtros
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="ss-topbar-filter-row ss-topbar-filter-row-actions-only">
+                <div className="ss-topbar-secondary-actions">
+                  <button className="ss-btn ss-btn-ghost" onClick={() => setActiveView('inicio')}>
+                    Volver
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
         <div className="ss-body ss-body-single">
@@ -1236,9 +1230,9 @@ function App() {
                     <small>{filters.program_id ? 'Competencias del programa' : 'Todas las competencias'}</small>
                   </article>
                   <article className="ss-kpi-card">
-                    <label>Huérfanos</label>
+                    <label>Cursos sin objetivos</label>
                     <strong>{coursesWithoutObjectivesCount}</strong>
-                    <small>Cursos sin objetivos</small>
+                    <small>Cursos sin competencias asignadas</small>
                   </article>
                 </section>
 
@@ -1279,8 +1273,12 @@ function App() {
                         <tr>
                           <th>Curso</th>
                           {heatmapObjectives.map((objective) => (
-                            <th key={`heat-head-${objective.id}`} title={objective.description}>
-                              OBJ-{objective.id}
+                            <th
+                              key={`heat-head-${objective.id}`}
+                              className="ss-heat-head"
+                              data-tooltip={objective.description}
+                            >
+                              <span>OBJ-{objective.id}</span>
                             </th>
                           ))}
                         </tr>
@@ -1331,7 +1329,7 @@ function App() {
                     <p className="ss-section-help">Radar de distribución por competencia basado en la mezcla de niveles I, F y V.</p>
 
                     <div className="ss-radar-wrap">
-                      <svg viewBox="0 0 220 220" role="img" aria-label="Radar de competencias">
+                      <svg viewBox="-24 -24 268 268" role="img" aria-label="Radar de competencias">
                         <circle cx="110" cy="110" r="80" className="ss-radar-grid" />
                         <circle cx="110" cy="110" r="53" className="ss-radar-grid" />
                         <circle cx="110" cy="110" r="26" className="ss-radar-grid" />
@@ -1373,11 +1371,10 @@ function App() {
                     <table className="ss-table">
                       <thead>
                         <tr>
-                          <th>Cursos / asignaturas</th>
                           <th>Programa</th>
+                          <th>Cursos / asignaturas</th>
                           <th>Competencias y objetivos</th>
                           <th>Niveles</th>
-                          <th>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1386,8 +1383,8 @@ function App() {
 
                           return (
                             <tr key={course.id}>
-                              <td><strong>{course.name}</strong></td>
                               <td>{course.program?.name || 'Sin programa'}</td>
+                              <td><strong>{course.name}</strong></td>
                               <td>
                                 <div className="ss-token-list">
                                   {courseObjectives.length === 0 && <span className="ss-token muted">Sin objetivos</span>}
@@ -1399,7 +1396,7 @@ function App() {
                                   ))}
                                 </div>
                               </td>
-                              <td>
+                              <td className="ss-cell-levels">
                                 <div className="ss-level-group">
                                   {courseObjectives.map((objective) => (
                                     <span key={`lvl-${course.id}-${objective.id}`} className={`ss-level-pill lvl-${objective.pivot?.contribution_level || 'E'}`}>
@@ -1408,21 +1405,13 @@ function App() {
                                   ))}
                                 </div>
                               </td>
-                              <td>
-                                <div className="ss-actions">
-                                  <button className="ss-btn ss-btn-ghost" onClick={() => startCourseEdit(course)}>Editar</button>
-                                  <button className="ss-btn ss-btn-danger" onClick={() => deleteEntity(`/courses/${course.id}`, 'Eliminar este curso quitará sus asignaciones. ¿Deseas continuar?')}>
-                                    Eliminar
-                                  </button>
-                                </div>
-                              </td>
                             </tr>
                           )
                         })}
 
                         {displayedCourses.length === 0 && (
                           <tr>
-                            <td colSpan="5" className="ss-empty-row">No hay cursos para los filtros seleccionados.</td>
+                            <td colSpan="4" className="ss-empty-row">No hay cursos para los filtros seleccionados.</td>
                           </tr>
                         )}
                       </tbody>
